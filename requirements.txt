@@ -1,0 +1,18 @@
+# ObsidianMem v2 — dependencies
+
+# Core
+pyyaml>=6.0
+
+# LLM Clients (установи нужный)
+anthropic>=0.40.0       # Claude API
+# openai>=1.0            # GPT API (опционально)
+
+# MCP Server (для Claude Desktop)
+mcp>=1.0
+
+# Semantic Search
+sentence-transformers>=2.2.0    # Локальные embeddings (all-MiniLM-L6-v2)
+numpy>=1.24.0
+
+# Optional: faster vector search for large vaults
+# faiss-cpu>=1.7.0

@@ -1,0 +1,29 @@
+# ObsidianMem конфигурация
+# Скопируй в config.yaml и заполни свои значения
+
+# Путь к Obsidian vault (будет создан автоматически)
+vault_path: "./vault"
+
+# LLM для извлечения знаний из разговоров
+# Варианты: anthropic, openai, ollama
+llm:
+  provider: "anthropic"
+
+  # Anthropic (Claude)
+  anthropic:
+    api_key: "sk-ant-..."  # твой API ключ
+    model: "claude-sonnet-4-20250514"
+
+  # OpenAI
+  openai:
+    api_key: "sk-..."
+    model: "gpt-4o-mini"
+
+  # Ollama (полностью локально, бесплатно)
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "llama3.2"
+
+# Embeddings (для семантического поиска)
+embeddings:
+  model: "all-MiniLM-L6-v2"  # локальная модель, 80MB

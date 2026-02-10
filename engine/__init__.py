@@ -1,0 +1,1 @@
+"""ObsidianMem Engine — core components."""
