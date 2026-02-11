@@ -227,89 +227,81 @@ def create_cloud_api() -> FastAPI:
     async def add(req: AddRequest, user_id: str = Depends(auth)):
         """
         Add memories from conversation.
-        Extracts entities, facts, relations, knowledge automatically.
+        Returns immediately, processes in background.
         """
-        extractor = get_llm()
+        import threading
 
-        conversation = [{"role": m.role, "content": m.content} for m in req.messages]
-        extraction = extractor.extract(conversation)
+        def process_in_background():
+            try:
+                extractor = get_llm()
+                conversation = [{"role": m.role, "content": m.content} for m in req.messages]
+                extraction = extractor.extract(conversation)
 
-        created = []
-        updated = []
-        knowledge_count = 0
+                for entity in extraction.entities:
+                    name = entity.name
+                    if not name:
+                        continue
 
-        for entity in extraction.entities:
-            name = entity.name
-            if not name:
-                continue
+                    # Build relations
+                    entity_relations = []
+                    for rel in extraction.relations:
+                        if rel.from_entity == name:
+                            entity_relations.append({
+                                "target": rel.to_entity,
+                                "type": rel.relation_type,
+                                "description": rel.description,
+                                "direction": "outgoing",
+                            })
+                        elif rel.to_entity == name:
+                            entity_relations.append({
+                                "target": rel.from_entity,
+                                "type": rel.relation_type,
+                                "description": rel.description,
+                                "direction": "incoming",
+                            })
 
-            # Check if exists
-            existing = store.get_entity(user_id, name)
+                    # Build knowledge
+                    entity_knowledge = []
+                    for k in extraction.knowledge:
+                        if k.entity == name:
+                            entity_knowledge.append({
+                                "type": k.knowledge_type,
+                                "title": k.title,
+                                "content": k.content,
+                                "artifact": k.artifact,
+                            })
 
-            # Build relations list for store
-            entity_relations = []
-            for rel in extraction.relations:
-                if rel.from_entity == name:
-                    entity_relations.append({
-                        "target": rel.to_entity,
-                        "type": rel.relation_type,
-                        "description": rel.description,
-                        "direction": "outgoing",
-                    })
-                elif rel.to_entity == name:
-                    entity_relations.append({
-                        "target": rel.from_entity,
-                        "type": rel.relation_type,
-                        "description": rel.description,
-                        "direction": "incoming",
-                    })
+                    entity_id = store.save_entity(
+                        user_id=user_id,
+                        name=name,
+                        type=entity.entity_type,
+                        facts=entity.facts,
+                        relations=entity_relations,
+                        knowledge=entity_knowledge,
+                    )
 
-            # Build knowledge list for store
-            entity_knowledge = []
-            for k in extraction.knowledge:
-                if k.entity == name:
-                    entity_knowledge.append({
-                        "type": k.knowledge_type,
-                        "title": k.title,
-                        "content": k.content,
-                        "artifact": k.artifact,
-                    })
+                    # Batch embeddings — one API call instead of N
+                    embedder = get_embedder()
+                    if embedder:
+                        chunks = [name] + entity.facts
+                        for k in entity_knowledge:
+                            chunks.append(f"{k['title']} {k['content']}")
 
-            entity_id = store.save_entity(
-                user_id=user_id,
-                name=name,
-                type=entity.entity_type,
-                facts=entity.facts,
-                relations=entity_relations,
-                knowledge=entity_knowledge,
-            )
+                        store.delete_embeddings(entity_id)
+                        embeddings = embedder.embed_batch(chunks)
+                        for chunk, emb in zip(chunks, embeddings):
+                            store.save_embedding(entity_id, chunk, emb)
 
-            if existing:
-                updated.append(name)
-            else:
-                created.append(name)
+                store.log_usage(user_id, "add")
+                print(f"✅ Background add complete for {user_id}", file=sys.stderr)
+            except Exception as e:
+                print(f"❌ Background add failed: {e}", file=sys.stderr)
 
-            knowledge_count += len(entity_knowledge)
-
-            # Generate embeddings
-            embedder = get_embedder()
-            if embedder:
-                chunks = [name] + entity.facts
-                for k in entity_knowledge:
-                    chunks.append(f"{k['title']} {k['content']}")
-
-                store.delete_embeddings(entity_id)
-                for chunk in chunks:
-                    emb = embedder.embed(chunk)
-                    store.save_embedding(entity_id, chunk, emb)
-
-        store.log_usage(user_id, "add")
+        threading.Thread(target=process_in_background, daemon=True).start()
 
         return {
-            "status": "ok",
-            "created": created,
-            "updated": updated,
-            "knowledge_count": knowledge_count,
+            "status": "accepted",
+            "message": "Processing in background. Memories will appear shortly.",
         }
 
     @app.post("/v1/search")
