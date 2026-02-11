@@ -123,6 +123,12 @@ def create_cloud_api() -> FastAPI:
         landing_path = Path(__file__).parent / "landing.html"
         return landing_path.read_text(encoding="utf-8")
 
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard():
+        """Web dashboard."""
+        dashboard_path = Path(__file__).parent / "dashboard.html"
+        return dashboard_path.read_text(encoding="utf-8")
+
     @app.post("/v1/signup", response_model=SignupResponse)
     async def signup(req: SignupRequest):
         """Create account and get API key."""

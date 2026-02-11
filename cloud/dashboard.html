@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mengram — Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #06060a;
+            --bg-card: #0c0c14;
+            --bg-hover: #12121e;
+            --bg-input: #0a0a12;
+            --border: #1a1a2e;
+            --border-active: #7c3aed;
+            --text: #e8e8f0;
+            --text-2: #8888a8;
+            --text-3: #55556a;
+            --accent: #7c3aed;
+            --accent-light: #a78bfa;
+            --accent-glow: rgba(124,58,237,0.15);
+            --green: #22c55e;
+            --green-dim: rgba(34,197,94,0.12);
+            --pink: #ec4899;
+            --blue: #3b82f6;
+            --orange: #f97316;
+            --cyan: #06b6d4;
+            --red: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        /* ---- Login ---- */
+        .login-screen {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 24px;
+        }
+        .login-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 48px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+        }
+        .login-logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .login-logo-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--accent), var(--pink));
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .login-sub { color: var(--text-2); font-size: 15px; margin-bottom: 32px; }
+        .login-input {
+            width: 100%;
+            padding: 14px 18px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+        .login-input:focus { border-color: var(--accent); }
+        .login-input::placeholder { color: var(--text-3); }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .login-btn:hover { background: #6d28d9; }
+        .login-btn:disabled { opacity: 0.5; cursor: wait; }
+        .login-error {
+            color: var(--red);
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+        }
+
+        /* ---- Dashboard Layout ---- */
+        .dashboard { display: none; min-height: 100vh; }
+
+        .topbar {
+            padding: 16px 32px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-card);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 24px; }
+        .topbar-logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .topbar-logo-icon {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, var(--accent), var(--pink));
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+        }
+
+        .tab-nav { display: flex; gap: 4px; }
+        .tab-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            color: var(--text-2);
+            font-size: 13px;
+            font-weight: 500;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--text); background: var(--bg-hover); }
+        .tab-btn.active { color: var(--text); background: var(--accent-glow); border-color: rgba(124,58,237,0.2); }
+
+        .topbar-right { display: flex; align-items: center; gap: 16px; }
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0 12px;
+            transition: border-color 0.2s;
+        }
+        .search-box:focus-within { border-color: var(--accent); }
+        .search-icon { color: var(--text-3); font-size: 14px; margin-right: 8px; }
+        .search-input {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 13px;
+            font-family: 'Outfit', sans-serif;
+            padding: 8px 0;
+            outline: none;
+            width: 200px;
+        }
+        .search-input::placeholder { color: var(--text-3); }
+        .logout-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-3);
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+        /* ---- Main content ---- */
+        .main { padding: 32px; max-width: 1400px; margin: 0 auto; }
+
+        /* ---- Stats strip ---- */
+        .stats-strip {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            transition: all 0.2s;
+        }
+        .stat-card:hover { border-color: rgba(124,58,237,0.3); }
+        .stat-label { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .stat-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; }
+        .stat-value.purple { color: var(--accent-light); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.blue { color: var(--blue); }
+        .stat-value.orange { color: var(--orange); }
+
+        /* ---- Entities Tab ---- */
+        .entities-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .entity-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            cursor: pointer;
+            transition: all 0.25s;
+        }
+        .entity-card:hover {
+            border-color: rgba(124,58,237,0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .entity-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .entity-type-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .type-person { background: rgba(236,72,153,0.12); color: var(--pink); }
+        .type-project { background: rgba(59,130,246,0.12); color: var(--blue); }
+        .type-technology { background: rgba(124,58,237,0.12); color: var(--accent-light); }
+        .type-company { background: rgba(249,115,22,0.12); color: var(--orange); }
+        .type-concept { background: rgba(6,182,212,0.12); color: var(--cyan); }
+        .type-unknown { background: rgba(136,136,168,0.12); color: var(--text-2); }
+        .entity-name { font-size: 18px; font-weight: 600; }
+        .entity-facts { margin-top: 12px; }
+        .entity-fact {
+            color: var(--text-2);
+            font-size: 13px;
+            line-height: 1.5;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(26,26,46,0.5);
+        }
+        .entity-fact:last-child { border-bottom: none; }
+        .entity-meta {
+            margin-top: 14px;
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            color: var(--text-3);
+        }
+
+        /* ---- Entity Detail Modal ---- */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(6,6,10,0.85);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            max-width: 680px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 36px;
+        }
+        .modal-close {
+            float: right;
+            background: none;
+            border: none;
+            color: var(--text-3);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+        }
+        .modal-close:hover { color: var(--text); }
+        .modal h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+        .modal-section { margin-top: 24px; }
+        .modal-section h3 {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-3);
+            margin-bottom: 12px;
+        }
+        .modal-fact {
+            padding: 10px 14px;
+            background: var(--bg);
+            border-radius: 8px;
+            font-size: 14px;
+            color: var(--text-2);
+            margin-bottom: 6px;
+        }
+        .modal-relation {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: var(--bg);
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+        .relation-type {
+            color: var(--accent-light);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+        }
+        .relation-target { color: var(--blue); font-weight: 500; cursor: pointer; }
+        .relation-target:hover { text-decoration: underline; }
+        .modal-knowledge {
+            background: var(--bg);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 10px;
+        }
+        .knowledge-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .knowledge-type {
+            padding: 2px 8px;
+            background: var(--green-dim);
+            color: var(--green);
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .knowledge-title { font-weight: 600; font-size: 14px; }
+        .knowledge-content { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+        .knowledge-artifact {
+            margin-top: 10px;
+            padding: 12px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--green);
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        .delete-btn {
+            margin-top: 24px;
+            padding: 10px 20px;
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.2);
+            color: var(--red);
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .delete-btn:hover { background: rgba(239,68,68,0.2); }
+
+        /* ---- Graph Tab ---- */
+        .graph-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            height: 600px;
+            position: relative;
+            overflow: hidden;
+        }
+        .graph-container svg { width: 100%; height: 100%; }
+        .graph-legend {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(6,6,10,0.9);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 18px;
+            font-size: 12px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .legend-item:last-child { margin-bottom: 0; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* ---- Search Results ---- */
+        .search-results {
+            display: none;
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 360px;
+            max-height: 400px;
+            overflow-y: auto;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+            z-index: 101;
+        }
+        .search-results.show { display: block; }
+        .search-result-item {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .search-result-item:hover { background: var(--bg-hover); }
+        .search-result-item:last-child { border-bottom: none; }
+        .sr-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .sr-score { font-size: 11px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; }
+        .sr-fact { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+        .search-empty { padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
+
+        /* Tab panels */
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ---- Loading ---- */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 80px;
+            color: var(--text-3);
+            font-size: 14px;
+        }
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-right: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ---- Empty state ---- */
+        .empty-state {
+            text-align: center;
+            padding: 80px 24px;
+            color: var(--text-3);
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state p { font-size: 15px; max-width: 400px; margin: 0 auto; }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 768px) {
+            .stats-strip { grid-template-columns: repeat(2, 1fr); }
+            .entities-grid { grid-template-columns: 1fr; }
+            .topbar { padding: 12px 16px; flex-wrap: wrap; gap: 12px; }
+            .main { padding: 16px; }
+            .search-input { width: 140px; }
+        }
+
+        /* ---- Scrollbar ---- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+    </style>
+</head>
+<body>
+
+    <!-- Login Screen -->
+    <div class="login-screen" id="login-screen">
+        <div class="login-box">
+            <div class="login-logo">
+                <div class="login-logo-icon">🧠</div>
+                Mengram
+            </div>
+            <p class="login-sub">Sign in with your API key</p>
+            <input type="password" class="login-input" id="api-key-input" placeholder="mg-... or om-...">
+            <button class="login-btn" id="login-btn" onclick="login()">Sign In</button>
+            <p class="login-error" id="login-error"></p>
+            <p style="margin-top: 20px; font-size: 12px; color: var(--text-3);">
+                Don't have a key? <a href="/" style="color: var(--accent-light);">Get one free →</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard" id="dashboard">
+        <!-- Topbar -->
+        <div class="topbar">
+            <div class="topbar-left">
+                <a href="/" class="topbar-logo">
+                    <div class="topbar-logo-icon">🧠</div>
+                    Mengram
+                </a>
+                <div class="tab-nav">
+                    <button class="tab-btn active" onclick="switchTab('entities')">Entities</button>
+                    <button class="tab-btn" onclick="switchTab('graph')">Graph</button>
+                </div>
+            </div>
+            <div class="topbar-right" style="position:relative">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input class="search-input" id="search-input" placeholder="Semantic search..." 
+                           oninput="debounceSearch()" onkeydown="if(event.key==='Escape') closeSearch()">
+                </div>
+                <div class="search-results" id="search-results"></div>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </div>
+
+        <div class="main">
+            <!-- Stats -->
+            <div class="stats-strip" id="stats-strip">
+                <div class="stat-card">
+                    <div class="stat-label">Entities</div>
+                    <div class="stat-value purple" id="stat-entities">—</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Facts</div>
+                    <div class="stat-value green" id="stat-facts">—</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Relations</div>
+                    <div class="stat-value blue" id="stat-relations">—</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Knowledge</div>
+                    <div class="stat-value orange" id="stat-knowledge">—</div>
+                </div>
+            </div>
+
+            <!-- Entities Tab -->
+            <div class="tab-panel active" id="panel-entities">
+                <div class="entities-grid" id="entities-grid"></div>
+            </div>
+
+            <!-- Graph Tab -->
+            <div class="tab-panel" id="panel-graph">
+                <div class="graph-container" id="graph-container">
+                    <div class="graph-legend">
+                        <div class="legend-item"><div class="legend-dot" style="background:#ec4899"></div> Person</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Project</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div> Technology</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Company</div>
+                        <div class="legend-item"><div class="legend-dot" style="background:#06b6d4"></div> Concept</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entity Detail Modal -->
+    <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) closeModal()">
+        <div class="modal" id="modal-content"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script>
+        const API_URL = window.location.origin;
+        let API_KEY = localStorage.getItem('mengram_api_key') || '';
+        let allEntities = [];
+        let searchTimeout = null;
+
+        // ---- Auth ----
+        function headers() {
+            return { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' };
+        }
+
+        async function login() {
+            const key = document.getElementById('api-key-input').value.trim();
+            if (!key) return;
+
+            const btn = document.getElementById('login-btn');
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+
+            try {
+                const resp = await fetch(`${API_URL}/v1/stats`, { headers: { 'Authorization': `Bearer ${key}` } });
+                if (!resp.ok) throw new Error('Invalid API key');
+
+                API_KEY = key;
+                localStorage.setItem('mengram_api_key', key);
+                showDashboard();
+            } catch (e) {
+                const err = document.getElementById('login-error');
+                err.style.display = 'block';
+                err.textContent = 'Invalid API key. Check and try again.';
+            }
+            btn.disabled = false;
+            btn.textContent = 'Sign In';
+        }
+
+        function logout() {
+            API_KEY = '';
+            localStorage.removeItem('mengram_api_key');
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('login-screen').style.display = 'flex';
+        }
+
+        // ---- Auto-login ----
+        if (API_KEY) {
+            showDashboard();
+        }
+
+        // ---- Dashboard ----
+        async function showDashboard() {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            await loadData();
+        }
+
+        async function loadData() {
+            try {
+                const [statsResp, memoriesResp] = await Promise.all([
+                    fetch(`${API_URL}/v1/stats`, { headers: headers() }),
+                    fetch(`${API_URL}/v1/memories`, { headers: headers() }),
+                ]);
+
+                const stats = await statsResp.json();
+                const memories = await memoriesResp.json();
+
+                document.getElementById('stat-entities').textContent = stats.entities || 0;
+                document.getElementById('stat-facts').textContent = stats.facts || 0;
+                document.getElementById('stat-relations').textContent = stats.relations || 0;
+                document.getElementById('stat-knowledge').textContent = stats.knowledge || 0;
+
+                allEntities = memories.memories || [];
+                renderEntities(allEntities);
+            } catch (e) {
+                console.error('Load error:', e);
+            }
+        }
+
+        // ---- Render Entities ----
+        function renderEntities(entities) {
+            const grid = document.getElementById('entities-grid');
+
+            if (!entities.length) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column: 1/-1">
+                        <div class="icon">🧠</div>
+                        <p>No memories yet. Start chatting with Claude Desktop — it'll save knowledge automatically.</p>
+                    </div>`;
+                return;
+            }
+
+            grid.innerHTML = entities.map(e => {
+                const type = e.type || 'unknown';
+                const facts = e.facts || [];
+                const relations = e.relations || [];
+                const knowledge = e.knowledge || [];
+                const shownFacts = facts.slice(0, 3);
+
+                return `
+                    <div class="entity-card" onclick="openEntity('${encodeURIComponent(e.name)}')">
+                        <div class="entity-header">
+                            <span class="entity-type-badge type-${type}">${type}</span>
+                            <span class="entity-name">${escHtml(e.name)}</span>
+                        </div>
+                        <div class="entity-facts">
+                            ${shownFacts.map(f => `<div class="entity-fact">• ${escHtml(f)}</div>`).join('')}
+                            ${facts.length > 3 ? `<div class="entity-fact" style="color:var(--text-3)">+${facts.length - 3} more</div>` : ''}
+                        </div>
+                        <div class="entity-meta">
+                            <span>${facts.length} facts</span>
+                            <span>${relations.length} relations</span>
+                            <span>${knowledge.length} knowledge</span>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        // ---- Entity Detail ----
+        async function openEntity(encodedName) {
+            const name = decodeURIComponent(encodedName);
+            const modal = document.getElementById('modal-content');
+            const overlay = document.getElementById('modal-overlay');
+
+            modal.innerHTML = `<div class="loading"><div class="spinner"></div>Loading...</div>`;
+            overlay.classList.add('show');
+
+            try {
+                const resp = await fetch(`${API_URL}/v1/memory/${encodeURIComponent(name)}`, { headers: headers() });
+                const data = await resp.json();
+
+                const type = data.type || 'unknown';
+                const facts = data.facts || [];
+                const relations = data.relations || [];
+                const knowledge = data.knowledge || [];
+
+                modal.innerHTML = `
+                    <button class="modal-close" onclick="closeModal()">×</button>
+                    <span class="entity-type-badge type-${type}" style="margin-bottom:12px;display:inline-block">${type}</span>
+                    <h2>${escHtml(data.entity || name)}</h2>
+
+                    ${facts.length ? `
+                    <div class="modal-section">
+                        <h3>Facts (${facts.length})</h3>
+                        ${facts.map(f => `<div class="modal-fact">${escHtml(f)}</div>`).join('')}
+                    </div>` : ''}
+
+                    ${relations.length ? `
+                    <div class="modal-section">
+                        <h3>Relations (${relations.length})</h3>
+                        ${relations.map(r => `
+                            <div class="modal-relation">
+                                <span class="relation-type">${escHtml(r.type || r.relation || '→')}</span>
+                                <span class="relation-target" onclick="openEntity('${encodeURIComponent(r.target || r.entity || '')}')">${escHtml(r.target || r.entity || '?')}</span>
+                                ${r.detail ? `<span style="color:var(--text-3);font-size:12px;margin-left:auto">${escHtml(r.detail)}</span>` : ''}
+                            </div>`).join('')}
+                    </div>` : ''}
+
+                    ${knowledge.length ? `
+                    <div class="modal-section">
+                        <h3>Knowledge (${knowledge.length})</h3>
+                        ${knowledge.map(k => `
+                            <div class="modal-knowledge">
+                                <div class="knowledge-header">
+                                    <span class="knowledge-type">${escHtml(k.type || 'note')}</span>
+                                    <span class="knowledge-title">${escHtml(k.title || '')}</span>
+                                </div>
+                                <div class="knowledge-content">${escHtml(k.content || '')}</div>
+                                ${k.artifact ? `<div class="knowledge-artifact">${escHtml(k.artifact)}</div>` : ''}
+                            </div>`).join('')}
+                    </div>` : ''}
+
+                    <button class="delete-btn" onclick="deleteEntity('${encodeURIComponent(name)}')">🗑 Delete this entity</button>
+                `;
+            } catch (e) {
+                modal.innerHTML = `<button class="modal-close" onclick="closeModal()">×</button><p>Error loading entity.</p>`;
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.remove('show');
+        }
+
+        async function deleteEntity(encodedName) {
+            const name = decodeURIComponent(encodedName);
+            if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+
+            try {
+                await fetch(`${API_URL}/v1/memory/${encodeURIComponent(name)}`, {
+                    method: 'DELETE',
+                    headers: headers(),
+                });
+                closeModal();
+                await loadData();
+            } catch (e) {
+                alert('Error deleting entity');
+            }
+        }
+
+        // ---- Search ----
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            const q = document.getElementById('search-input').value.trim();
+            if (!q) { closeSearch(); return; }
+            searchTimeout = setTimeout(() => doSearch(q), 400);
+        }
+
+        async function doSearch(query) {
+            const box = document.getElementById('search-results');
+            box.innerHTML = `<div class="loading" style="padding:20px"><div class="spinner"></div>Searching...</div>`;
+            box.classList.add('show');
+
+            try {
+                const resp = await fetch(`${API_URL}/v1/search`, {
+                    method: 'POST',
+                    headers: headers(),
+                    body: JSON.stringify({ query, top_k: 8 }),
+                });
+                const data = await resp.json();
+                const results = data.results || [];
+
+                if (!results.length) {
+                    box.innerHTML = `<div class="search-empty">No results for "${escHtml(query)}"</div>`;
+                    return;
+                }
+
+                box.innerHTML = results.map(r => `
+                    <div class="search-result-item" onclick="openEntity('${encodeURIComponent(r.entity || r.name)}'); closeSearch();">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <span class="sr-name">${escHtml(r.entity || r.name)}</span>
+                            <span class="sr-score">${(r.score || 0).toFixed(3)}</span>
+                        </div>
+                        ${(r.facts || []).slice(0, 2).map(f => `<div class="sr-fact">• ${escHtml(f)}</div>`).join('')}
+                    </div>`).join('');
+            } catch (e) {
+                box.innerHTML = `<div class="search-empty">Search error</div>`;
+            }
+        }
+
+        function closeSearch() {
+            document.getElementById('search-results').classList.remove('show');
+        }
+
+        // Close search on click outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.topbar-right')) closeSearch();
+        });
+
+        // ---- Tabs ----
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('panel-' + tab).classList.add('active');
+
+            if (tab === 'graph') loadGraph();
+        }
+
+        // ---- Knowledge Graph ----
+        async function loadGraph() {
+            const container = document.getElementById('graph-container');
+            // Remove old SVG
+            container.querySelectorAll('svg').forEach(s => s.remove());
+
+            try {
+                const resp = await fetch(`${API_URL}/v1/graph`, { headers: headers() });
+                const data = await resp.json();
+
+                const nodes = data.nodes || [];
+                const links = data.edges || data.links || [];
+
+                if (!nodes.length) {
+                    container.innerHTML += `<div class="empty-state"><div class="icon">🕸️</div><p>No graph data yet.</p></div>`;
+                    return;
+                }
+
+                renderGraph(container, nodes, links);
+            } catch (e) {
+                console.error('Graph error:', e);
+            }
+        }
+
+        function renderGraph(container, nodes, links) {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            const typeColors = {
+                person: '#ec4899',
+                project: '#3b82f6',
+                technology: '#a78bfa',
+                company: '#f97316',
+                concept: '#06b6d4',
+                unknown: '#8888a8',
+            };
+
+            const svg = d3.select(container).append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Zoom
+            const g = svg.append('g');
+            svg.call(d3.zoom().scaleExtent([0.2, 4]).on('zoom', (e) => {
+                g.attr('transform', e.transform);
+            }));
+
+            // Normalize links to use node indices
+            const nodeMap = {};
+            nodes.forEach((n, i) => { nodeMap[n.id || n.name] = i; });
+
+            const simLinks = links.map(l => ({
+                source: nodeMap[l.source] !== undefined ? nodeMap[l.source] : l.source,
+                target: nodeMap[l.target] !== undefined ? nodeMap[l.target] : l.target,
+                type: l.type || l.label || '',
+            })).filter(l => l.source !== undefined && l.target !== undefined);
+
+            const simulation = d3.forceSimulation(nodes)
+                .force('link', d3.forceLink(simLinks).distance(120))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(40));
+
+            // Links
+            const link = g.append('g')
+                .selectAll('line')
+                .data(simLinks)
+                .enter().append('line')
+                .attr('stroke', '#1a1a2e')
+                .attr('stroke-width', 1.5);
+
+            // Link labels
+            const linkLabel = g.append('g')
+                .selectAll('text')
+                .data(simLinks)
+                .enter().append('text')
+                .text(d => d.type)
+                .attr('font-size', 9)
+                .attr('fill', '#55556a')
+                .attr('font-family', 'JetBrains Mono, monospace')
+                .attr('text-anchor', 'middle');
+
+            // Nodes
+            const node = g.append('g')
+                .selectAll('circle')
+                .data(nodes)
+                .enter().append('circle')
+                .attr('r', d => 8 + (d.facts_count || d.facts || 0) * 1.5)
+                .attr('fill', d => typeColors[d.type] || typeColors.unknown)
+                .attr('stroke', 'rgba(255,255,255,0.1)')
+                .attr('stroke-width', 1.5)
+                .style('cursor', 'pointer')
+                .on('click', (event, d) => openEntity(encodeURIComponent(d.name || d.id)))
+                .call(d3.drag()
+                    .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                    .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+                    .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+                );
+
+            // Node labels
+            const label = g.append('g')
+                .selectAll('text')
+                .data(nodes)
+                .enter().append('text')
+                .text(d => d.name || d.id)
+                .attr('font-size', 12)
+                .attr('font-weight', 500)
+                .attr('fill', '#e8e8f0')
+                .attr('font-family', 'Outfit, sans-serif')
+                .attr('text-anchor', 'middle')
+                .attr('dy', -16)
+                .style('pointer-events', 'none');
+
+            simulation.on('tick', () => {
+                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                linkLabel.attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2);
+                node.attr('cx', d => d.x).attr('cy', d => d.y);
+                label.attr('x', d => d.x).attr('y', d => d.y);
+            });
+        }
+
+        // ---- Helpers ----
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // Enter key on login
+        document.getElementById('api-key-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>
