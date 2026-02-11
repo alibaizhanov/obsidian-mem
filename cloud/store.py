@@ -270,7 +270,7 @@ class CloudStore:
     # ---- Search ----
 
     def search_vector(self, user_id: str, embedding: list[float],
-                      top_k: int = 5, min_score: float = 0.3) -> list[dict]:
+                      top_k: int = 5, min_score: float = 0.5) -> list[dict]:
         """
         Semantic search using pgvector cosine similarity.
         Returns [{"entity": name, "type": type, "score": float, ...}]
@@ -278,31 +278,87 @@ class CloudStore:
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            # Single query: get entity + score, deduplicated by entity
             cur.execute(
-                """SELECT DISTINCT ON (e.name)
-                       e.name, e.type,
+                """SELECT DISTINCT ON (e.id)
+                       e.id, e.name, e.type,
                        1 - (emb.embedding <=> %s::vector) AS score
                    FROM embeddings emb
                    JOIN entities e ON e.id = emb.entity_id
                    WHERE e.user_id = %s
                      AND 1 - (emb.embedding <=> %s::vector) > %s
-                   ORDER BY e.name, score DESC
-                   LIMIT %s""",
-                (embedding_str, user_id, embedding_str, min_score, top_k)
+                   ORDER BY e.id, score DESC""",
+                (embedding_str, user_id, embedding_str, min_score)
             )
-            results = []
+            rows = cur.fetchall()
+            # Sort by score descending and limit
+            rows = sorted(rows, key=lambda r: r["score"], reverse=True)[:top_k]
+
+            if not rows:
+                return []
+
+            # Batch load: get all facts, relations, knowledge in 3 queries instead of N*4
+            entity_ids = [str(row["id"]) for row in rows]
+            entity_map = {str(row["id"]): {
+                "entity": row["name"],
+                "type": row["type"],
+                "score": round(float(row["score"]), 3),
+                "facts": [],
+                "relations": [],
+                "knowledge": [],
+            } for row in rows}
+
+            # Batch facts
+            cur.execute(
+                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s)",
+                (entity_ids,)
+            )
             for row in cur.fetchall():
-                entity = self.get_entity(user_id, row["name"])
-                if entity:
-                    results.append({
-                        "entity": entity.name,
-                        "type": entity.type,
-                        "score": round(float(row["score"]), 3),
-                        "facts": entity.facts,
-                        "relations": [r for r in entity.relations],
-                        "knowledge": [k for k in entity.knowledge],
+                eid = str(row["entity_id"])
+                if eid in entity_map:
+                    entity_map[eid]["facts"].append(row["content"])
+
+            # Batch relations
+            cur.execute(
+                """SELECT r.source_entity_id, r.target_entity_id, r.relation_type, r.detail,
+                          se.name as source_name, te.name as target_name
+                   FROM relations r
+                   JOIN entities se ON se.id = r.source_entity_id
+                   JOIN entities te ON te.id = r.target_entity_id
+                   WHERE r.source_entity_id = ANY(%s) OR r.target_entity_id = ANY(%s)""",
+                (entity_ids, entity_ids)
+            )
+            for row in cur.fetchall():
+                src_id = str(row["source_entity_id"])
+                tgt_id = str(row["target_entity_id"])
+                rel = {
+                    "type": row["relation_type"],
+                    "detail": row["detail"] or "",
+                }
+                if src_id in entity_map:
+                    rel_out = {**rel, "direction": "outgoing", "target": row["target_name"]}
+                    entity_map[src_id]["relations"].append(rel_out)
+                if tgt_id in entity_map and tgt_id != src_id:
+                    rel_in = {**rel, "direction": "incoming", "target": row["source_name"]}
+                    entity_map[tgt_id]["relations"].append(rel_in)
+
+            # Batch knowledge
+            cur.execute(
+                "SELECT entity_id, type, title, content, artifact FROM knowledge WHERE entity_id = ANY(%s)",
+                (entity_ids,)
+            )
+            for row in cur.fetchall():
+                eid = str(row["entity_id"])
+                if eid in entity_map:
+                    entity_map[eid]["knowledge"].append({
+                        "type": row["type"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "artifact": row["artifact"],
                     })
-            return results
+
+            # Return in score order
+            return [entity_map[str(row["id"])] for row in rows]
 
     def search_text(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
         """Fallback text search (ILIKE)."""
