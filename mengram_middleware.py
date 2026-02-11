@@ -6,8 +6,8 @@ Auto-Memory Middleware — автоматическая память для лю
 - ПОСЛЕ ответа: remember → извлекает и сохраняет новые знания
 
 Использование:
-    from obsidian_mem import Memory
-    from obsidian_mem_middleware import AutoMemory
+    from mengram import Memory
+    from mengram_middleware import AutoMemory
 
     m = Memory(vault_path="./vault", llm_provider="anthropic", api_key="...")
     auto = AutoMemory(memory=m, user_id="ali")
@@ -24,7 +24,7 @@ Auto-Memory Middleware — автоматическая память для лю
 
 from typing import Optional
 
-from obsidian_mem import Memory
+from mengram import Memory
 from engine.extractor.llm_client import LLMClient
 
 
@@ -148,7 +148,7 @@ class MemoryOpenAIWrapper:
 
     Использование:
         from openai import OpenAI
-        from obsidian_mem_middleware import MemoryOpenAIWrapper
+        from mengram_middleware import MemoryOpenAIWrapper
 
         client = MemoryOpenAIWrapper(
             openai_client=OpenAI(),

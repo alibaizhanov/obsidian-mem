@@ -1,4 +1,4 @@
-# 🧠 ObsidianMem
+# 🧠 Mengram
 
 **AI memory as a typed knowledge graph in Obsidian.**
 
@@ -8,9 +8,9 @@ Like [Mem0](https://github.com/mem0ai/mem0), but **you own your data** — and i
 
 ---
 
-## Why ObsidianMem?
+## Why Mengram?
 
-|  | **Mem0** | **Basic Memory** | **ObsidianMem** |
+|  | **Mem0** | **Basic Memory** | **Mengram** |
 |---|---|---|---|
 | Storage | Cloud vectors | Flat markdown | **Typed knowledge graph in .md** |
 | Entity types | ❌ Flat facts | ❌ One note per chat | ✅ Person, Project, Technology, Company |
@@ -25,7 +25,7 @@ Like [Mem0](https://github.com/mem0ai/mem0), but **you own your data** — and i
 
 ### What it actually does
 
-You chat with Claude (or any LLM). ObsidianMem **automatically**:
+You chat with Claude (or any LLM). Mengram **automatically**:
 
 1. **Extracts** entities, facts, relationships, and **rich knowledge** (solutions, commands, configs with code)
 2. **Creates** typed `.md` files in your Obsidian vault
@@ -62,18 +62,18 @@ Next time you ask "How did we fix the OOM?" → Claude **already knows**, with t
 ### 1. Install
 
 ```bash
-pip install obsidian-mem[all]
+pip install mengram[all]
 ```
 
 ### 2. Setup (one command)
 
 ```bash
-obsidian-mem init
+mengram init
 ```
 
 This will:
 - Ask for your LLM provider and API key
-- Create `~/.obsidian-mem/config.yaml` and vault
+- Create `~/.mengram/config.yaml` and vault
 - Auto-configure Claude Desktop MCP integration
 - Tell you to restart Claude Desktop
 
@@ -82,15 +82,15 @@ That's it. **Talk to Claude — it remembers automatically and always has contex
 ### Non-interactive:
 
 ```bash
-obsidian-mem init --provider anthropic --api-key sk-ant-...
+mengram init --provider anthropic --api-key sk-ant-...
 ```
 
 ### Other commands:
 
 ```bash
-obsidian-mem status    # Check setup
-obsidian-mem stats     # Vault statistics
-obsidian-mem server    # Start MCP server manually
+mengram status    # Check setup
+mengram stats     # Vault statistics
+mengram server    # Start MCP server manually
 ```
 
 ---
@@ -158,7 +158,7 @@ SELECT count(*), state FROM pg_stat_activity GROUP BY state;
 ## Python SDK (Mem0-compatible API)
 
 ```python
-from obsidian_mem import Memory
+from mengram import Memory
 
 m = Memory(
     vault_path="./my-brain",
@@ -187,8 +187,8 @@ print(m.stats(user_id="ali"))
 Drop-in wrapper that automatically remembers and recalls:
 
 ```python
-from obsidian_mem import Memory
-from obsidian_mem_middleware import AutoMemory
+from mengram import Memory
+from mengram_middleware import AutoMemory
 
 m = Memory(vault_path="./vault", llm_provider="anthropic", api_key="sk-ant-...")
 auto = AutoMemory(memory=m, user_id="ali")
@@ -282,8 +282,8 @@ semantic_search:
 
 | Provider | Install | Cost |
 |---|---|---|
-| Anthropic (Claude) | `pip install obsidian-mem[anthropic]` | API pricing |
-| OpenAI (GPT) | `pip install obsidian-mem[openai]` | API pricing |
+| Anthropic (Claude) | `pip install mengram[anthropic]` | API pricing |
+| OpenAI (GPT) | `pip install mengram[openai]` | API pricing |
 | Ollama (local) | Install [ollama](https://ollama.ai) | Free |
 
 ---
@@ -307,8 +307,8 @@ semantic_search:
 ## Contributing
 
 ```bash
-git clone https://github.com/alibaizhanov/obsidian-mem
-cd obsidian-mem
+git clone https://github.com/alibaizhanov/mengram
+cd mengram
 pip install -e ".[all,dev]"
 pytest
 ```

@@ -1,8 +1,8 @@
 """
-ObsidianMem SDK — Mem0-совместимый API с Knowledge Graph.
+Mengram SDK — Mem0-совместимый API с Knowledge Graph.
 
 Использование:
-    from obsidian_mem import Memory
+    from mengram import Memory
 
     m = Memory(vault_path="./vault", llm_provider="anthropic", api_key="sk-ant-...")
 
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass, field
 
-from engine.brain import ObsidianMemBrain
+from engine.brain import MengramBrain
 from engine.extractor.llm_client import (
     LLMClient,
     AnthropicClient,
@@ -76,7 +76,7 @@ class SearchResult:
 
 class Memory:
     """
-    ObsidianMem — Mem0-совместимый API с Knowledge Graph.
+    Mengram — Mem0-совместимый API с Knowledge Graph.
 
     Каждый user_id получает свой vault (подпапку).
     Внутри vault — .md файлы с entities, facts, [[links]].
@@ -98,7 +98,7 @@ class Memory:
         self.extractor = ConversationExtractor(self.llm)
 
         # Кеш brain-ов по user_id
-        self._brains: dict[str, ObsidianMemBrain] = {}
+        self._brains: dict[str, MengramBrain] = {}
 
     def _create_llm(
         self, provider: str, api_key: Optional[str],
@@ -118,11 +118,11 @@ class Memory:
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
-    def _get_brain(self, user_id: str = "default") -> ObsidianMemBrain:
+    def _get_brain(self, user_id: str = "default") -> MengramBrain:
         """Получает brain для конкретного user_id"""
         if user_id not in self._brains:
             user_vault = str(self.base_vault_path / user_id)
-            self._brains[user_id] = ObsidianMemBrain(
+            self._brains[user_id] = MengramBrain(
                 vault_path=user_vault,
                 llm_client=self.llm,
             )
@@ -366,8 +366,8 @@ def init(
     Быстрая инициализация.
 
     Примеры:
-        import obsidian_mem
-        m = obsidian_mem.init(provider="anthropic", api_key="sk-ant-...")
+        import mengram
+        m = mengram.init(provider="anthropic", api_key="sk-ant-...")
         m.add("Я люблю Python", user_id="ali")
     """
     return Memory(
@@ -380,7 +380,7 @@ def init(
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("🧠 ObsidianMem SDK — Demo")
+    print("🧠 Mengram SDK — Demo")
     print("=" * 60)
 
     # Mock LLM для теста
@@ -439,8 +439,8 @@ if __name__ == "__main__":
     m.add("Я работаю в Uzum Bank", user_id="ali")
     m.search("где работает ali?")
     
-    # ObsidianMem (наш):
-    from obsidian_mem import Memory
+    # Mengram (наш):
+    from mengram import Memory
     m = Memory(vault_path="./vault", llm_provider="anthropic", api_key="...")
     m.add("Я работаю в Uzum Bank", user_id="ali")
     m.search("где работает ali?")

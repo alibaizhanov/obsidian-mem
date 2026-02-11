@@ -1,5 +1,5 @@
 """
-ObsidianMem Cloud Storage — PostgreSQL backend.
+Mengram Cloud Storage — PostgreSQL backend.
 
 Replaces VaultManager (local .md files) with PostgreSQL + pgvector.
 Same interface, different storage.
@@ -42,7 +42,7 @@ class CloudEntity:
 
 class CloudStore:
     """
-    PostgreSQL storage backend for ObsidianMem Cloud.
+    PostgreSQL storage backend for Mengram Cloud.
     
     Sync API (psycopg2) for simplicity. 
     Can be swapped to async (asyncpg) for production.

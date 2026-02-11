@@ -1,1 +1,1 @@
-"""ObsidianMem MCP Server."""
+"""Mengram MCP Server."""

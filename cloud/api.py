@@ -1,10 +1,10 @@
 """
-ObsidianMem Cloud API Server
+Mengram Cloud API Server
 
 Hosted version — PostgreSQL + pgvector backend.
 Developers get API key, integrate in 3 lines:
 
-    from obsidian_mem import CloudMemory
+    from mengram import CloudMemory
     m = CloudMemory(api_key="om-...")
     m.add(messages, user_id="alice")
     results = m.search("database issues", user_id="alice")
@@ -27,7 +27,7 @@ from cloud.store import CloudStore
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://localhost:5432/obsidianmem"
+    "postgresql://localhost:5432/mengram"
 )
 
 # ---- Models ----
@@ -61,7 +61,7 @@ class SignupResponse(BaseModel):
 
 def create_cloud_api() -> FastAPI:
     app = FastAPI(
-        title="ObsidianMem Cloud API",
+        title="Mengram Cloud API",
         description="Memory layer for AI apps — hosted",
         version="1.0.0",
     )
@@ -298,7 +298,7 @@ def main():
     app = create_cloud_api()
     port = int(os.environ.get("PORT", 8420))
 
-    print(f"🧠 ObsidianMem Cloud API", file=sys.stderr)
+    print(f"🧠 Mengram Cloud API", file=sys.stderr)
     print(f"   http://0.0.0.0:{port}", file=sys.stderr)
     print(f"   Docs: http://localhost:{port}/docs", file=sys.stderr)
 

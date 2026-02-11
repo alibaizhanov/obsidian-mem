@@ -1,7 +1,7 @@
 """
-ObsidianMem REST API v1.0
+Mengram REST API v1.0
 
-FastAPI server for ObsidianMem — integrate with any app, LLM, or frontend.
+FastAPI server for Mengram — integrate with any app, LLM, or frontend.
 
 Endpoints:
   POST /api/remember          — Save knowledge from conversation
@@ -16,8 +16,8 @@ Endpoints:
   GET  /api/graph             — Knowledge graph (nodes + edges)
 
 Usage:
-  obsidian-mem api                          # start on :8420
-  obsidian-mem api --port 3000              # custom port
+  mengram api                          # start on :8420
+  mengram api --port 3000              # custom port
   python -m api.rest_server config.yaml     # direct
 """
 
@@ -35,7 +35,7 @@ try:
 except ImportError:
     FASTAPI_AVAILABLE = False
 
-from engine.brain import ObsidianMemBrain, create_brain, load_config
+from engine.brain import MengramBrain, create_brain, load_config
 
 
 # --- Request/Response Models ---
@@ -116,11 +116,11 @@ class GraphResponse(BaseModel):
 
 # --- API Factory ---
 
-def create_rest_api(brain: ObsidianMemBrain) -> "FastAPI":
+def create_rest_api(brain: MengramBrain) -> "FastAPI":
     """Create FastAPI app with all endpoints."""
 
     app = FastAPI(
-        title="ObsidianMem API",
+        title="Mengram API",
         description="AI memory as a typed knowledge graph in Obsidian",
         version="1.0.0",
     )
@@ -349,7 +349,7 @@ def create_rest_api(brain: ObsidianMemBrain) -> "FastAPI":
         index_file = web_dir / "index.html"
         if index_file.exists():
             return FileResponse(index_file)
-        return {"message": "ObsidianMem API. Web UI not found. Docs at /docs"}
+        return {"message": "Mengram API. Web UI not found. Docs at /docs"}
 
     @app.get("/static/{filepath:path}")
     async def static_files(filepath: str):
@@ -369,7 +369,7 @@ def main():
         sys.exit(1)
 
     import argparse
-    parser = argparse.ArgumentParser(description="ObsidianMem REST API")
+    parser = argparse.ArgumentParser(description="Mengram REST API")
     parser.add_argument("config", nargs="?", default="config.yaml", help="Config file path")
     parser.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8420, help="Port (default: 8420)")
@@ -383,7 +383,7 @@ def main():
 
     app = create_rest_api(brain)
 
-    print(f"🧠 ObsidianMem REST API", file=sys.stderr)
+    print(f"🧠 Mengram REST API", file=sys.stderr)
     print(f"   http://{args.host}:{args.port}", file=sys.stderr)
     print(f"   Docs: http://localhost:{args.port}/docs", file=sys.stderr)
 

@@ -1,5 +1,5 @@
 """
-ObsidianMem Cloud MCP Server — Claude Desktop с облачной памятью.
+Mengram Cloud MCP Server — Claude Desktop с облачной памятью.
 
 Работает через cloud API вместо локального vault.
 Память доступна с любого устройства.
@@ -7,12 +7,12 @@ ObsidianMem Cloud MCP Server — Claude Desktop с облачной память
 Claude Desktop config:
 {
   "mcpServers": {
-    "obsidian-mem": {
-      "command": "obsidian-mem",
+    "mengram": {
+      "command": "mengram",
       "args": ["mcp", "--cloud"],
       "env": {
-        "OBSIDIAN_MEM_API_KEY": "om-abc123...",
-        "OBSIDIAN_MEM_URL": "https://obsidian-mem-production.up.railway.app"
+        "MENGRAM_API_KEY": "om-abc123...",
+        "MENGRAM_URL": "https://mengram-production.up.railway.app"
       }
     }
   }
@@ -61,7 +61,7 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
 
     profile = _get_profile()
     instructions = (
-        "YOU HAVE A PERSISTENT CLOUD MEMORY SYSTEM (ObsidianMem).\n"
+        "YOU HAVE A PERSISTENT CLOUD MEMORY SYSTEM (Mengram).\n"
         "CRITICAL RULES:\n"
         "1. When the user asks about their work, projects, tech stack, past problems — "
         "ALWAYS use 'recall' tool FIRST.\n"
@@ -70,7 +70,7 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
         f"{profile}"
     )
 
-    server = Server("obsidian-mem-cloud", instructions=instructions)
+    server = Server("mengram-cloud", instructions=instructions)
 
     # ---- Resources ----
 
@@ -251,12 +251,12 @@ async def main():
         print("❌ MCP SDK not installed: pip install mcp", file=sys.stderr)
         sys.exit(1)
 
-    api_key = os.environ.get("OBSIDIAN_MEM_API_KEY", "")
-    base_url = os.environ.get("OBSIDIAN_MEM_URL", "https://obsidian-mem-production.up.railway.app")
-    user_id = os.environ.get("OBSIDIAN_MEM_USER_ID", "default")
+    api_key = os.environ.get("MENGRAM_API_KEY", "")
+    base_url = os.environ.get("MENGRAM_URL", "https://mengram-production.up.railway.app")
+    user_id = os.environ.get("MENGRAM_USER_ID", "default")
 
     if not api_key:
-        print("❌ Set OBSIDIAN_MEM_API_KEY environment variable", file=sys.stderr)
+        print("❌ Set MENGRAM_API_KEY environment variable", file=sys.stderr)
         sys.exit(1)
 
     mem = CloudMemory(api_key=api_key, base_url=base_url)

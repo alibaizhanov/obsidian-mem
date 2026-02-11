@@ -1,5 +1,5 @@
 """
-ObsidianMem MCP Server v3.0 — Proactive Context via Resources
+Mengram MCP Server v3.0 — Proactive Context via Resources
 
 Resources (auto-included in Claude's context when pinned):
   memory://profile        — Full user knowledge profile. PIN THIS!
@@ -29,10 +29,10 @@ try:
 except ImportError:
     MCP_AVAILABLE = False
 
-from engine.brain import ObsidianMemBrain, create_brain, load_config
+from engine.brain import MengramBrain, create_brain, load_config
 
 
-def _build_compact_profile(brain: ObsidianMemBrain) -> str:
+def _build_compact_profile(brain: MengramBrain) -> str:
     """
     Build compact vault summary for MCP instructions.
     NOT a full profile — just an "index" so Claude knows what exists.
@@ -104,11 +104,11 @@ def _build_compact_profile(brain: ObsidianMemBrain) -> str:
         return f"Error loading profile: {e}"
 
 
-def create_mcp_server(brain: ObsidianMemBrain) -> "Server":
+def create_mcp_server(brain: MengramBrain) -> "Server":
     # Build dynamic instructions with compact profile
     compact_profile = _build_compact_profile(brain)
     instructions = (
-        "YOU HAVE A PERSISTENT MEMORY SYSTEM (ObsidianMem) with a knowledge graph.\n"
+        "YOU HAVE A PERSISTENT MEMORY SYSTEM (Mengram) with a knowledge graph.\n"
         "CRITICAL RULES:\n"
         "1. When the user asks about their work, projects, tech stack, past problems, "
         "or anything personal — ALWAYS use the 'recall' tool FIRST. Do NOT use built-in "
@@ -119,7 +119,7 @@ def create_mcp_server(brain: ObsidianMemBrain) -> "Server":
         f"{compact_profile}"
     )
 
-    server = Server("obsidian-mem", instructions=instructions)
+    server = Server("mengram", instructions=instructions)
 
     # ==========================================
     # RESOURCES — Proactive Context

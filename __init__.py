@@ -1,2 +1,2 @@
-__version__ = "0.6.0"
-"""ObsidianMem — AI memory as a typed knowledge graph in Obsidian."""
+__version__ = "1.0.0"
+"""Mengram — AI memory layer for apps."""

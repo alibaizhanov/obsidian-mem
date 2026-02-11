@@ -1,8 +1,8 @@
 """
-ObsidianMem Cloud Client — developer SDK.
+Mengram Cloud Client — developer SDK.
 
 Usage:
-    from obsidian_mem import CloudMemory
+    from mengram import CloudMemory
 
     m = CloudMemory(api_key="om-...")
 
@@ -38,13 +38,13 @@ from typing import Optional
 
 class CloudMemory:
     """
-    ObsidianMem Cloud client.
+    Mengram Cloud client.
     
     Drop-in replacement for local Memory class.
     Data stored in cloud PostgreSQL — works from any device.
     """
 
-    DEFAULT_BASE_URL = "https://api.obsidian-mem.dev"
+    DEFAULT_BASE_URL = "https://api.mengram.dev"
 
     def __init__(self, api_key: str, base_url: str = None):
         self.api_key = api_key

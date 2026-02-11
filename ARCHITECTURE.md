@@ -1,4 +1,4 @@
-# ObsidianMem v2 — Второй мозг из разговоров с AI
+# Mengram v2 — Второй мозг из разговоров с AI
 
 ## Идея
 
@@ -69,7 +69,7 @@
 ## Структура проекта
 
 ```
-obsidian-mem-v2/
+mengram-v2/
 ├── engine/
 │   ├── extractor/
 │   │   ├── conversation_extractor.py  # Извлечение знаний из разговоров

@@ -1,5 +1,5 @@
 """
-ObsidianMem Brain — главный оркестратор.
+Mengram Brain — главный оркестратор.
 
 Объединяет все компоненты:
 1. Conversation Extractor → извлекает знания из разговоров
@@ -26,7 +26,7 @@ from engine.graph.knowledge_graph import build_graph_from_vault, KnowledgeGraph
 from engine.parser.markdown_parser import parse_vault
 
 
-class ObsidianMemBrain:
+class MengramBrain:
     """
     Главный класс — "мозг".
 
@@ -572,7 +572,7 @@ def load_config(config_path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def create_brain(config_path: str = "config.yaml") -> ObsidianMemBrain:
+def create_brain(config_path: str = "config.yaml") -> MengramBrain:
     config = load_config(config_path)
     vault_path = config.get("vault_path", "./vault")
 
@@ -584,7 +584,7 @@ def create_brain(config_path: str = "config.yaml") -> ObsidianMemBrain:
 
     use_vectors = config.get("semantic_search", {}).get("enabled", True)
 
-    return ObsidianMemBrain(
+    return MengramBrain(
         vault_path=vault_path,
         llm_client=llm_client,
         use_vectors=use_vectors,

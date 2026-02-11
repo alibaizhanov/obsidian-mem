@@ -174,7 +174,7 @@ def build_retrieval_engine(vault_path: str) -> HybridRetrieval:
     Строит граф + индексирует вектора.
     """
     print("=" * 50)
-    print("🏗️  Building ObsidianMem Retrieval Engine")
+    print("🏗️  Building Mengram Retrieval Engine")
     print("=" * 50)
 
     # Step 1: Knowledge Graph

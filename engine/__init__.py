@@ -1,1 +1,1 @@
-"""ObsidianMem Engine — core components."""
+"""Mengram Engine — core components."""

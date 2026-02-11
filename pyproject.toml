@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "obsidian-mem"
-version = "0.6.0"
-description = "AI memory as a typed knowledge graph in Obsidian. Like Mem0, but you own your data."
+name = "mengram"
+version = "1.0.0"
+description = "AI memory layer for apps. Open-source Mem0 alternative. Like Mem0, but you own your data."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ authors = [
     {name = "Ali Baizhanov"},
 ]
 keywords = [
-    "memory", "obsidian", "knowledge-graph", "llm", "ai", "mcp",
+    "memory", "mengram", "knowledge-graph", "llm", "ai", "mcp",
     "second-brain", "rag", "semantic-search", "embeddings",
 ]
 classifiers = [
@@ -51,19 +51,19 @@ all = [
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21"]
 
 [project.urls]
-Homepage = "https://github.com/alibaizhanov/obsidian-mem"
-Repository = "https://github.com/alibaizhanov/obsidian-mem"
-Issues = "https://github.com/alibaizhanov/obsidian-mem/issues"
-Documentation = "https://github.com/alibaizhanov/obsidian-mem#readme"
+Homepage = "https://github.com/alibaizhanov/mengram"
+Repository = "https://github.com/alibaizhanov/mengram"
+Issues = "https://github.com/alibaizhanov/mengram/issues"
+Documentation = "https://mengram.io"
 
 [project.scripts]
-obsidian-mem = "cli:main"
+mengram = "cli:main"
 
 [tool.setuptools.packages.find]
 include = ["engine*", "api*"]
 
 [tool.setuptools]
-py-modules = ["obsidian_mem", "obsidian_mem_middleware", "cli"]
+py-modules = ["mengram", "mengram_middleware", "cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

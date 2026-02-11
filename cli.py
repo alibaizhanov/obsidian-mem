@@ -1,13 +1,13 @@
 """
-ObsidianMem CLI
+Mengram CLI
 
 Usage:
-    obsidian-mem init              # Interactive setup
-    obsidian-mem init --provider anthropic --api-key sk-ant-...
-    obsidian-mem server            # Start MCP server
-    obsidian-mem server --config ~/.obsidian-mem/config.yaml
-    obsidian-mem status            # Check setup
-    obsidian-mem stats             # Vault statistics
+    mengram init              # Interactive setup
+    mengram init --provider anthropic --api-key sk-ant-...
+    mengram server            # Start MCP server
+    mengram server --config ~/.mengram/config.yaml
+    mengram status            # Check setup
+    mengram stats             # Vault statistics
 """
 
 import os
@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 # Default paths
-DEFAULT_HOME = Path.home() / ".obsidian-mem"
+DEFAULT_HOME = Path.home() / ".mengram"
 DEFAULT_CONFIG = DEFAULT_HOME / "config.yaml"
 DEFAULT_VAULT = DEFAULT_HOME / "vault"
 
@@ -39,7 +39,7 @@ def get_claude_desktop_config_path() -> Path:
 
 def cmd_init(args):
     """Interactive setup — creates config, vault, MCP integration"""
-    print("🧠 ObsidianMem Setup\n")
+    print("🧠 Mengram Setup\n")
 
     home_dir = Path(args.home) if args.home else DEFAULT_HOME
     home_dir.mkdir(parents=True, exist_ok=True)
@@ -129,8 +129,8 @@ cd "{home_dir}"
 
     # --- 5. Find package location for MCP ---
     try:
-        import obsidian_mem
-        package_dir = Path(obsidian_mem.__file__).parent
+        import mengram
+        package_dir = Path(mengram.__file__).parent
         # If installed as package, the engine/ and api/ are siblings
         # We need the directory containing api/mcp_server.py
         if (package_dir / "api" / "mcp_server.py").exists():
@@ -149,7 +149,7 @@ cd "{home_dir}"
     if not args.no_mcp:
         if not claude_config_path.parent.exists():
             print(f"\n⚠️  Claude Desktop config dir not found: {claude_config_path.parent}")
-            print("   Install Claude Desktop first, then run: obsidian-mem init --mcp-only")
+            print("   Install Claude Desktop first, then run: mengram init --mcp-only")
             setup_mcp = False
         else:
             # Read existing config
@@ -165,7 +165,7 @@ cd "{home_dir}"
             if "mcpServers" not in claude_config:
                 claude_config["mcpServers"] = {}
 
-            claude_config["mcpServers"]["obsidian-mem"] = {
+            claude_config["mcpServers"]["mengram"] = {
                 "command": str(server_script),
             }
 
@@ -177,7 +177,7 @@ cd "{home_dir}"
 
     # --- Done ---
     print(f"\n{'='*50}")
-    print(f"🎉 ObsidianMem ready!\n")
+    print(f"🎉 Mengram ready!\n")
     print(f"   Config:  {config_path}")
     print(f"   Vault:   {vault_path}")
     print(f"   LLM:     {provider}")
@@ -187,10 +187,10 @@ cd "{home_dir}"
         print(f"\n   ⚡ Restart Claude Desktop to activate MCP")
         print(f"   Then tell Claude: 'Remember that I work at ...'")
     else:
-        print(f"\n   Start MCP server: obsidian-mem server")
+        print(f"\n   Start MCP server: mengram server")
 
     print(f"\n   Python SDK:")
-    print(f"   >>> from obsidian_mem import Memory")
+    print(f"   >>> from mengram import Memory")
     print(f"   >>> m = Memory(vault_path='{vault_path}', llm_provider='{provider}')")
 
 
@@ -198,16 +198,16 @@ def cmd_server(args):
     """Start MCP server"""
     if getattr(args, 'cloud', False):
         # Cloud mode — connect to cloud API
-        api_key = os.environ.get("OBSIDIAN_MEM_API_KEY", "")
-        base_url = os.environ.get("OBSIDIAN_MEM_URL", "https://obsidian-mem-production.up.railway.app")
-        user_id = os.environ.get("OBSIDIAN_MEM_USER_ID", "default")
+        api_key = os.environ.get("MENGRAM_API_KEY", "")
+        base_url = os.environ.get("MENGRAM_URL", "https://mengram-production.up.railway.app")
+        user_id = os.environ.get("MENGRAM_USER_ID", "default")
 
         if not api_key:
-            print("❌ Set OBSIDIAN_MEM_API_KEY environment variable")
-            print("   Get one: curl -X POST https://obsidian-mem-production.up.railway.app/v1/signup -d '{\"email\": \"you@email.com\"}'")
+            print("❌ Set MENGRAM_API_KEY environment variable")
+            print("   Get one: curl -X POST https://mengram-production.up.railway.app/v1/signup -d '{\"email\": \"you@email.com\"}'")
             sys.exit(1)
 
-        print(f"🧠 Starting ObsidianMem Cloud MCP server...", file=sys.stderr)
+        print(f"🧠 Starting Mengram Cloud MCP server...", file=sys.stderr)
         print(f"   API: {base_url}", file=sys.stderr)
 
         import asyncio
@@ -219,10 +219,10 @@ def cmd_server(args):
 
     if not Path(config_path).exists():
         print(f"❌ Config not found: {config_path}")
-        print(f"   Run: obsidian-mem init")
+        print(f"   Run: mengram init")
         sys.exit(1)
 
-    print(f"🧠 Starting ObsidianMem MCP server...")
+    print(f"🧠 Starting Mengram MCP server...")
     print(f"   Config: {config_path}")
 
     # Set working directory to where engine/ is
@@ -242,7 +242,7 @@ def cmd_server(args):
 
 def cmd_status(args):
     """Check setup status"""
-    print("🧠 ObsidianMem Status\n")
+    print("🧠 Mengram Status\n")
 
     # Config
     config_path = DEFAULT_CONFIG
@@ -253,7 +253,7 @@ def cmd_status(args):
         print(f"   Provider: {config.get('llm', {}).get('provider', '?')}")
         print(f"   Vault: {config.get('vault_path', '?')}")
     else:
-        print(f"❌ Config not found. Run: obsidian-mem init")
+        print(f"❌ Config not found. Run: mengram init")
         return
 
     # Vault
@@ -278,7 +278,7 @@ def cmd_status(args):
         try:
             with open(claude_config) as f:
                 cc = json.load(f)
-            if "obsidian-mem" in cc.get("mcpServers", {}):
+            if "mengram" in cc.get("mcpServers", {}):
                 print(f"✅ Claude Desktop MCP configured")
             else:
                 print(f"⚠️  Claude Desktop found but MCP not configured")
@@ -300,7 +300,7 @@ def cmd_stats(args):
     config_path = args.config or str(DEFAULT_CONFIG)
 
     if not Path(config_path).exists():
-        print(f"❌ Run: obsidian-mem init")
+        print(f"❌ Run: mengram init")
         sys.exit(1)
 
     from engine.brain import create_brain
@@ -311,7 +311,7 @@ def cmd_stats(args):
     brain = create_brain(config_path)
     stats = brain.get_stats()
 
-    print("🧠 ObsidianMem Stats\n")
+    print("🧠 Mengram Stats\n")
     vault = stats.get("vault", {})
     print(f"📁 Notes: {vault.get('total_notes', 0)}")
     for t, count in vault.get("by_type", {}).items():
@@ -329,14 +329,14 @@ def cmd_api(args):
     config_path = args.config or str(DEFAULT_CONFIG)
 
     if not Path(config_path).exists():
-        print(f"❌ Run: obsidian-mem init")
+        print(f"❌ Run: mengram init")
         sys.exit(1)
 
     try:
         import fastapi
         import uvicorn
     except ImportError:
-        print("❌ FastAPI not installed: pip install obsidian-mem[api]")
+        print("❌ FastAPI not installed: pip install mengram[api]")
         sys.exit(1)
 
     from engine.brain import create_brain
@@ -350,7 +350,7 @@ def cmd_api(args):
 
     app = create_rest_api(brain)
 
-    print(f"🧠 ObsidianMem REST API")
+    print(f"🧠 Mengram REST API")
     print(f"   http://localhost:{args.port}")
     print(f"   Docs: http://localhost:{args.port}/docs")
 
@@ -362,14 +362,14 @@ def cmd_web(args):
     config_path = args.config or str(DEFAULT_CONFIG)
 
     if not Path(config_path).exists():
-        print(f"❌ Run: obsidian-mem init")
+        print(f"❌ Run: mengram init")
         sys.exit(1)
 
     try:
         import fastapi
         import uvicorn
     except ImportError:
-        print("❌ FastAPI not installed: pip install obsidian-mem[api]")
+        print("❌ FastAPI not installed: pip install mengram[api]")
         sys.exit(1)
 
     from engine.brain import create_brain
@@ -383,7 +383,7 @@ def cmd_web(args):
     app = create_rest_api(brain)
 
     url = f"http://localhost:{args.port}"
-    print(f"🧠 ObsidianMem Web UI")
+    print(f"🧠 Mengram Web UI")
     print(f"   {url}")
     print(f"   API docs: {url}/docs")
     print()
@@ -398,23 +398,23 @@ def cmd_web(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="obsidian-mem",
-        description="🧠 ObsidianMem — AI memory as a knowledge graph in Obsidian",
+        prog="mengram",
+        description="🧠 Mengram — AI memory as a knowledge graph in Obsidian",
     )
     sub = parser.add_subparsers(dest="command")
 
     # init
-    p_init = sub.add_parser("init", help="Setup ObsidianMem")
+    p_init = sub.add_parser("init", help="Setup Mengram")
     p_init.add_argument("--provider", choices=["anthropic", "openai", "ollama"], help="LLM provider")
     p_init.add_argument("--api-key", help="API key")
     p_init.add_argument("--vault", help="Custom vault path")
-    p_init.add_argument("--home", help="ObsidianMem home dir (default: ~/.obsidian-mem)")
+    p_init.add_argument("--home", help="Mengram home dir (default: ~/.mengram)")
     p_init.add_argument("--no-mcp", action="store_true", help="Skip Claude Desktop MCP setup")
     p_init.add_argument("--mcp-only", action="store_true", help="Only setup MCP (config must exist)")
 
     # server
     p_server = sub.add_parser("server", help="Start MCP server")
-    p_server.add_argument("--config", help="Config path (default: ~/.obsidian-mem/config.yaml)")
+    p_server.add_argument("--config", help="Config path (default: ~/.mengram/config.yaml)")
     p_server.add_argument("--cloud", action="store_true", help="Use cloud API instead of local vault")
 
     # status
