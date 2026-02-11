@@ -196,6 +196,25 @@ cd "{home_dir}"
 
 def cmd_server(args):
     """Start MCP server"""
+    if getattr(args, 'cloud', False):
+        # Cloud mode — connect to cloud API
+        api_key = os.environ.get("OBSIDIAN_MEM_API_KEY", "")
+        base_url = os.environ.get("OBSIDIAN_MEM_URL", "https://obsidian-mem-production.up.railway.app")
+        user_id = os.environ.get("OBSIDIAN_MEM_USER_ID", "default")
+
+        if not api_key:
+            print("❌ Set OBSIDIAN_MEM_API_KEY environment variable")
+            print("   Get one: curl -X POST https://obsidian-mem-production.up.railway.app/v1/signup -d '{\"email\": \"you@email.com\"}'")
+            sys.exit(1)
+
+        print(f"🧠 Starting ObsidianMem Cloud MCP server...", file=sys.stderr)
+        print(f"   API: {base_url}", file=sys.stderr)
+
+        import asyncio
+        from api.cloud_mcp_server import main as cloud_mcp_main
+        asyncio.run(cloud_mcp_main())
+        return
+
     config_path = args.config or str(DEFAULT_CONFIG)
 
     if not Path(config_path).exists():
@@ -396,6 +415,7 @@ def main():
     # server
     p_server = sub.add_parser("server", help="Start MCP server")
     p_server.add_argument("--config", help="Config path (default: ~/.obsidian-mem/config.yaml)")
+    p_server.add_argument("--cloud", action="store_true", help="Use cloud API instead of local vault")
 
     # status
     sub.add_parser("status", help="Check setup status")
