@@ -109,6 +109,15 @@ class CloudStore:
                 return str(row[0])
             return None
 
+    def reset_api_key(self, user_id: str) -> str:
+        """Deactivate all old keys and create a new one."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE api_keys SET is_active = FALSE WHERE user_id = %s",
+                (user_id,)
+            )
+        return self.create_api_key(user_id, name="reset")
+
     # ---- Entities ----
 
     def save_entity(self, user_id: str, name: str, type: str,

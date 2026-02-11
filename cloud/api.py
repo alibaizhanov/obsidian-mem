@@ -56,6 +56,9 @@ class SignupResponse(BaseModel):
     api_key: str
     message: str
 
+class ResetKeyRequest(BaseModel):
+    email: str
+
 
 # ---- App ----
 
@@ -115,6 +118,60 @@ def create_cloud_api() -> FastAPI:
             raise HTTPException(status_code=401, detail="Invalid API key")
         return user_id
 
+    # ---- Email helper ----
+
+    def _send_api_key_email(email: str, api_key: str, is_reset: bool = False):
+        """Send API key to user via Resend."""
+        resend_key = os.environ.get("RESEND_API_KEY")
+        if not resend_key:
+            print("⚠️  RESEND_API_KEY not set, skipping email", file=sys.stderr)
+            return
+
+        try:
+            import resend
+            resend.api_key = resend_key
+
+            action = "reset" if is_reset else "created"
+            subject = f"Your new Mengram API key" if is_reset else "Welcome to Mengram 🧠"
+
+            html = f"""
+            <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:0 auto;padding:40px 24px;color:#e8e8f0;background:#0a0a12;border-radius:16px">
+                <div style="text-align:center;margin-bottom:32px">
+                    <span style="font-size:36px">🧠</span>
+                    <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px;color:#e8e8f0">Mengram</h1>
+                    <p style="color:#8888a8;font-size:14px;margin:0">AI memory layer for apps</p>
+                </div>
+                <p style="font-size:15px;color:#c8c8d8;line-height:1.6">
+                    {"Your API key has been reset. Old keys are now deactivated." if is_reset else "Welcome! Your account has been created."}
+                </p>
+                <div style="background:#12121e;border:1px solid #1a1a2e;border-radius:10px;padding:18px;margin:20px 0;text-align:center">
+                    <p style="color:#8888a8;font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px">Your API Key</p>
+                    <code style="font-size:14px;color:#a78bfa;word-break:break-all">{api_key}</code>
+                </div>
+                <p style="font-size:13px;color:#ef4444;font-weight:600">⚠️ Save this key — it won't be shown again.</p>
+                <p style="font-size:14px;color:#8888a8;margin-top:24px">
+                    Quick start:<br>
+                    <code style="color:#22c55e;font-size:13px">pip install mengram-ai</code>
+                </p>
+                <hr style="border:none;border-top:1px solid #1a1a2e;margin:28px 0">
+                <p style="font-size:12px;color:#55556a;text-align:center">
+                    <a href="https://mengram.io/dashboard" style="color:#7c3aed;text-decoration:none">Dashboard</a> ·
+                    <a href="https://mengram.io/docs" style="color:#7c3aed;text-decoration:none">API Docs</a> ·
+                    <a href="https://github.com/alibaizhanov/mengram" style="color:#7c3aed;text-decoration:none">GitHub</a>
+                </p>
+            </div>
+            """
+
+            resend.Emails.send({
+                "from": "Mengram <onboarding@resend.dev>",
+                "to": [email],
+                "subject": subject,
+                "html": html,
+            })
+            print(f"📧 Email sent to {email} (key {action})", file=sys.stderr)
+        except Exception as e:
+            print(f"⚠️  Email send failed: {e}", file=sys.stderr)
+
     # ---- Public endpoints ----
 
     @app.get("/", response_class=HTMLResponse)
@@ -139,10 +196,26 @@ def create_cloud_api() -> FastAPI:
         user_id = store.create_user(req.email)
         api_key = store.create_api_key(user_id)
 
+        # Send key via email
+        _send_api_key_email(req.email, api_key, is_reset=False)
+
         return SignupResponse(
             api_key=api_key,
-            message="Save this key — it won't be shown again."
+            message="API key sent to your email. Save it — it won't be shown again."
         )
+
+    @app.post("/v1/reset-key")
+    async def reset_key(req: ResetKeyRequest):
+        """Reset API key and send new one to email."""
+        user_id = store.get_user_by_email(req.email)
+        if not user_id:
+            # Don't reveal whether email exists
+            return {"message": "If this email is registered, a new API key has been sent."}
+
+        new_key = store.reset_api_key(user_id)
+        _send_api_key_email(req.email, new_key, is_reset=True)
+
+        return {"message": "If this email is registered, a new API key has been sent."}
 
     @app.get("/v1/health")
     async def health():

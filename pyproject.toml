@@ -39,7 +39,7 @@ anthropic = ["anthropic>=0.40"]
 openai = ["openai>=1.0"]
 embeddings = ["sentence-transformers>=2.2"]
 mcp = ["mcp>=1.0"]
-api = ["fastapi>=0.100", "uvicorn>=0.20"]
+api = ["fastapi>=0.100", "uvicorn>=0.20", "resend>=2.0"]
 all = [
     "anthropic>=0.40",
     "openai>=1.0",

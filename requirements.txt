@@ -3,3 +3,4 @@ anthropic>=0.40.0
 fastapi>=0.100
 uvicorn>=0.20
 psycopg2-binary>=2.9
+resend>=2.0
