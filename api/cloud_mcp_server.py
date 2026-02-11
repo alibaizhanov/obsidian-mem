@@ -157,11 +157,6 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
                 },
             ),
             Tool(
-                name="recall_all",
-                description="Get all memories.",
-                inputSchema={"type": "object", "properties": {}},
-            ),
-            Tool(
                 name="vault_stats",
                 description="Memory statistics.",
                 inputSchema={"type": "object", "properties": {}},
@@ -223,23 +218,6 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
                     type="text",
                     text=json.dumps(results, ensure_ascii=False, indent=2),
                 )]
-
-            elif name == "recall_all":
-                memories = mem.get_all(user_id=user_id)
-                if not memories:
-                    return [TextContent(type="text", text="Memory is empty.")]
-
-                lines = []
-                for m_item in memories:
-                    entity = mem.get(m_item["name"], user_id=user_id)
-                    if entity:
-                        lines.append(f"## {entity['entity']} ({entity.get('type', '?')})")
-                        for f in entity.get("facts", []):
-                            lines.append(f"- {f}")
-                        for k in entity.get("knowledge", []):
-                            lines.append(f"  [{k.get('type', '')}] {k.get('title', '')}")
-                        lines.append("")
-                return [TextContent(type="text", text="\n".join(lines))]
 
             elif name == "vault_stats":
                 stats = mem.stats(user_id=user_id)
