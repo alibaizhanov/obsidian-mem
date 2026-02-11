@@ -62,15 +62,18 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
     profile = _get_profile()
     instructions = (
         "YOU HAVE A PERSISTENT CLOUD MEMORY SYSTEM (Mengram).\n"
-        "THIS IS YOUR PRIMARY SOURCE OF TRUTH ABOUT THE USER.\n\n"
+        "THIS IS YOUR PRIMARY AND ONLY SOURCE OF TRUTH ABOUT THE USER.\n\n"
         "CRITICAL RULES:\n"
-        "1. ALWAYS use 'recall' tool FIRST before answering ANY personal question about the user — "
-        "their work, projects, preferences, tech stack, past problems, colleagues, etc.\n"
-        "2. Mengram memory takes PRIORITY over your built-in memory or chat history. "
-        "If Mengram has info, use it. Only fall back to chat context if Mengram returns nothing.\n"
-        "3. After meaningful conversations, call 'remember' to save new knowledge.\n"
-        "4. Memory is synced across all devices via cloud.\n"
-        "5. Do NOT say 'I don't have info about you' without calling recall first.\n\n"
+        "1. ALWAYS use 'recall' tool FIRST before answering ANY personal question.\n"
+        "2. Use SPECIFIC queries: names ('Ali'), projects ('Mengram'), tech ('Redis').\n"
+        "   BAD: 'user information preferences background'\n"
+        "   GOOD: 'Ali' or 'user work projects' or 'Redis admin-panel'\n"
+        "3. For broad questions ('what do you know about me'), make 2-3 recall calls:\n"
+        "   - recall('Ali')\n"
+        "   - recall('projects work')\n"
+        "   - recall('technologies stack')\n"
+        "4. After meaningful conversations, call 'remember' to save new knowledge.\n"
+        "5. Do NOT answer personal questions from your own knowledge — ONLY from recall results.\n\n"
         f"{profile}"
     )
 
@@ -135,11 +138,11 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
             ),
             Tool(
                 name="recall",
-                description="ALWAYS call this FIRST when user asks anything personal. Semantic search through cloud memory. This is your primary knowledge source about the user.",
+                description="ALWAYS call this FIRST when user asks anything personal. Semantic search through cloud memory. Use specific keywords: person names, project names, technologies. For broad questions like 'what do you know about me', search for the user's name or 'Ali'. Multiple calls with different queries are encouraged.",
                 inputSchema={
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string"},
+                        "query": {"type": "string", "description": "Specific search query — use names, projects, technologies. NOT generic phrases."},
                     },
                     "required": ["query"],
                 },

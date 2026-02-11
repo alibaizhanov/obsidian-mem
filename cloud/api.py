@@ -312,6 +312,9 @@ def create_cloud_api() -> FastAPI:
         if embedder:
             emb = embedder.embed(req.query)
             results = store.search_vector(user_id, emb, top_k=req.limit)
+            # Fallback: if nothing found, retry with lower threshold
+            if not results:
+                results = store.search_vector(user_id, emb, top_k=req.limit, min_score=0.25)
         else:
             results = store.search_text(user_id, req.query, top_k=req.limit)
 
@@ -324,6 +327,13 @@ def create_cloud_api() -> FastAPI:
                       user_id: str = Depends(auth)):
         """Get all memories (entities)."""
         entities = store.get_all_entities(user_id)
+        store.log_usage(user_id, "get_all")
+        return {"memories": entities}
+
+    @app.get("/v1/memories/full")
+    async def get_all_full(user_id: str = Depends(auth)):
+        """Get all memories with full facts, relations, knowledge. Single query."""
+        entities = store.get_all_entities_full(user_id)
         store.log_usage(user_id, "get_all")
         return {"memories": entities}
 
