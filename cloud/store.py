@@ -291,18 +291,18 @@ class CloudStore:
 
             # 3. Batch all relations
             cur.execute(
-                """SELECT r.source_entity_id, r.target_entity_id, r.relation_type, r.detail,
+                """SELECT r.source_id, r.target_id, r.type, r.description,
                           se.name as source_name, te.name as target_name
                    FROM relations r
-                   JOIN entities se ON se.id = r.source_entity_id
-                   JOIN entities te ON te.id = r.target_entity_id
-                   WHERE r.source_entity_id = ANY(%s::uuid[]) OR r.target_entity_id = ANY(%s::uuid[])""",
+                   JOIN entities se ON se.id = r.source_id
+                   JOIN entities te ON te.id = r.target_id
+                   WHERE r.source_id = ANY(%s::uuid[]) OR r.target_id = ANY(%s::uuid[])""",
                 (entity_ids, entity_ids)
             )
             for row in cur.fetchall():
-                src_id = str(row["source_entity_id"])
-                tgt_id = str(row["target_entity_id"])
-                rel = {"type": row["relation_type"], "detail": row["detail"] or ""}
+                src_id = str(row["source_id"])
+                tgt_id = str(row["target_id"])
+                rel = {"type": row["type"], "detail": row["description"] or ""}
                 if src_id in entity_map:
                     entity_map[src_id]["relations"].append(
                         {**rel, "direction": "outgoing", "target": row["target_name"]})
@@ -389,20 +389,20 @@ class CloudStore:
 
             # Batch relations
             cur.execute(
-                """SELECT r.source_entity_id, r.target_entity_id, r.relation_type, r.detail,
+                """SELECT r.source_id, r.target_id, r.type, r.description,
                           se.name as source_name, te.name as target_name
                    FROM relations r
-                   JOIN entities se ON se.id = r.source_entity_id
-                   JOIN entities te ON te.id = r.target_entity_id
-                   WHERE r.source_entity_id = ANY(%s::uuid[]) OR r.target_entity_id = ANY(%s::uuid[])""",
+                   JOIN entities se ON se.id = r.source_id
+                   JOIN entities te ON te.id = r.target_id
+                   WHERE r.source_id = ANY(%s::uuid[]) OR r.target_id = ANY(%s::uuid[])""",
                 (entity_ids, entity_ids)
             )
             for row in cur.fetchall():
-                src_id = str(row["source_entity_id"])
-                tgt_id = str(row["target_entity_id"])
+                src_id = str(row["source_id"])
+                tgt_id = str(row["target_id"])
                 rel = {
-                    "type": row["relation_type"],
-                    "detail": row["detail"] or "",
+                    "type": row["type"],
+                    "detail": row["description"] or "",
                 }
                 if src_id in entity_map:
                     rel_out = {**rel, "direction": "outgoing", "target": row["target_name"]}
