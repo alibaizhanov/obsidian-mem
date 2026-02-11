@@ -119,6 +119,11 @@ class CloudMemory:
         result = self._request("GET", f"/v1/memories?user_id_param={user_id}")
         return result.get("memories", [])
 
+    def get_all_full(self, user_id: str = "default") -> list[dict]:
+        """Get all memories with full details in one request."""
+        result = self._request("GET", "/v1/memories/full")
+        return result.get("memories", [])
+
     def get(self, name: str, user_id: str = "default") -> Optional[dict]:
         """Get specific entity details."""
         try:

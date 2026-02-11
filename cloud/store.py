@@ -258,6 +258,75 @@ class CloudStore:
             )
             return [dict(r) for r in cur.fetchall()]
 
+    def get_all_entities_full(self, user_id: str) -> list[dict]:
+        """Get ALL entities with full facts, relations, knowledge in 4 queries total."""
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            # 1. Get all entities
+            cur.execute(
+                "SELECT id, name, type FROM entities WHERE user_id = %s ORDER BY updated_at DESC",
+                (user_id,)
+            )
+            entities = cur.fetchall()
+            if not entities:
+                return []
+
+            entity_ids = [str(e["id"]) for e in entities]
+            entity_map = {str(e["id"]): {
+                "entity": e["name"],
+                "type": e["type"],
+                "facts": [],
+                "relations": [],
+                "knowledge": [],
+            } for e in entities}
+
+            # 2. Batch all facts
+            cur.execute(
+                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s::uuid[])",
+                (entity_ids,)
+            )
+            for row in cur.fetchall():
+                eid = str(row["entity_id"])
+                if eid in entity_map:
+                    entity_map[eid]["facts"].append(row["content"])
+
+            # 3. Batch all relations
+            cur.execute(
+                """SELECT r.source_entity_id, r.target_entity_id, r.relation_type, r.detail,
+                          se.name as source_name, te.name as target_name
+                   FROM relations r
+                   JOIN entities se ON se.id = r.source_entity_id
+                   JOIN entities te ON te.id = r.target_entity_id
+                   WHERE r.source_entity_id = ANY(%s::uuid[]) OR r.target_entity_id = ANY(%s::uuid[])""",
+                (entity_ids, entity_ids)
+            )
+            for row in cur.fetchall():
+                src_id = str(row["source_entity_id"])
+                tgt_id = str(row["target_entity_id"])
+                rel = {"type": row["relation_type"], "detail": row["detail"] or ""}
+                if src_id in entity_map:
+                    entity_map[src_id]["relations"].append(
+                        {**rel, "direction": "outgoing", "target": row["target_name"]})
+                if tgt_id in entity_map and tgt_id != src_id:
+                    entity_map[tgt_id]["relations"].append(
+                        {**rel, "direction": "incoming", "target": row["source_name"]})
+
+            # 4. Batch all knowledge
+            cur.execute(
+                "SELECT entity_id, type, title, content, artifact FROM knowledge WHERE entity_id = ANY(%s::uuid[])",
+                (entity_ids,)
+            )
+            for row in cur.fetchall():
+                eid = str(row["entity_id"])
+                if eid in entity_map:
+                    entity_map[eid]["knowledge"].append({
+                        "type": row["type"],
+                        "title": row["title"],
+                        "content": row["content"],
+                        "artifact": row["artifact"],
+                    })
+
+            return [entity_map[str(e["id"])] for e in entities]
+
     def delete_entity(self, user_id: str, name: str) -> bool:
         """Delete entity and all related data."""
         with self.conn.cursor() as cur:
@@ -310,7 +379,7 @@ class CloudStore:
 
             # Batch facts
             cur.execute(
-                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s)",
+                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s::uuid[])",
                 (entity_ids,)
             )
             for row in cur.fetchall():
@@ -325,7 +394,7 @@ class CloudStore:
                    FROM relations r
                    JOIN entities se ON se.id = r.source_entity_id
                    JOIN entities te ON te.id = r.target_entity_id
-                   WHERE r.source_entity_id = ANY(%s) OR r.target_entity_id = ANY(%s)""",
+                   WHERE r.source_entity_id = ANY(%s::uuid[]) OR r.target_entity_id = ANY(%s::uuid[])""",
                 (entity_ids, entity_ids)
             )
             for row in cur.fetchall():
@@ -344,7 +413,7 @@ class CloudStore:
 
             # Batch knowledge
             cur.execute(
-                "SELECT entity_id, type, title, content, artifact FROM knowledge WHERE entity_id = ANY(%s)",
+                "SELECT entity_id, type, title, content, artifact FROM knowledge WHERE entity_id = ANY(%s::uuid[])",
                 (entity_ids,)
             )
             for row in cur.fetchall():
