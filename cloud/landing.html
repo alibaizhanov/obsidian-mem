@@ -461,6 +461,42 @@
 
         /* ---- Local section ---- */
         .local-section { padding: 80px 0; }
+
+        /* ---- Setup Guide section ---- */
+        .setup-section { padding: 80px 0; }
+        .setup-tabs {
+            display: flex; gap: 8px; justify-content: center;
+            margin-bottom: 32px; flex-wrap: wrap;
+        }
+        .setup-tab {
+            padding: 10px 24px; border-radius: 8px; border: 1px solid #2a2a2a;
+            background: #141414; color: #888; cursor: pointer; font-size: 15px;
+            transition: all 0.2s;
+        }
+        .setup-tab:hover { border-color: #444; color: #e0e0e0; }
+        .setup-tab.active { border-color: #646cff; color: #e0e0e0; background: rgba(100,108,255,0.1); }
+        .setup-content {
+            max-width: 640px; margin: 0 auto;
+        }
+        .setup-steps { display: flex; flex-direction: column; gap: 24px; }
+        .setup-code {
+            background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 10px;
+            padding: 16px 20px; margin-top: 8px; overflow-x: auto;
+        }
+        .setup-code pre {
+            font-family: 'JetBrains Mono', monospace; font-size: 13px;
+            color: #a78bfa; line-height: 1.6; margin: 0;
+        }
+        .setup-link {
+            color: #646cff; text-decoration: none; font-weight: 600;
+        }
+        .setup-link:hover { text-decoration: underline; }
+        .setup-note {
+            text-align: center; margin-top: 32px; padding: 16px;
+            background: rgba(100,108,255,0.06); border: 1px solid rgba(100,108,255,0.15);
+            border-radius: 12px; max-width: 640px; margin-left: auto; margin-right: auto;
+            font-size: 14px; color: #ccc;
+        }
         .local-box {
             max-width: 620px;
             margin: 0 auto;
@@ -665,17 +701,32 @@ results = m.search(<span class="c-str">"database issues"</span>)
                     <p>OpenAI embeddings + pgvector. Find by meaning, not keywords. "database issues" finds Redis, HikariCP, pool configs.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon fi-green">⚡</div>
-                    <h3>3 Lines to Integrate</h3>
-                    <p>init → add → search. Works with any LLM: OpenAI, Anthropic, Ollama. Drop into existing apps in minutes.</p>
+                    <div class="feature-icon fi-green">⏱️</div>
+                    <h3>Temporal Memory</h3>
+                    <p>"What did I do last week?" Every fact has a timestamp. Search by time range, track how knowledge evolves.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon fi-orange">🖥️</div>
-                    <h3>Claude Desktop MCP</h3>
-                    <p>Built-in MCP server. Claude Desktop gets persistent memory across all conversations, all devices. Cloud-synced.</p>
+                    <div class="feature-icon fi-orange">🔄</div>
+                    <h3>Conflict Resolution</h3>
+                    <p>"Moved from Almaty to Dubai" — old location auto-archived. No duplicates, no stale data. Memory stays clean.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon fi-cyan">🔓</div>
+                    <div class="feature-icon fi-cyan">🔗</div>
+                    <h3>Multi-Client</h3>
+                    <p>Claude Desktop, ChatGPT, Cursor — one shared memory. Save in Claude, recall in ChatGPT. OAuth built-in.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon fi-purple">🧹</div>
+                    <h3>Auto Deduplication</h3>
+                    <p>"Ali" and "Ali Baizhanov" automatically merge. Smart word-boundary matching keeps memory clean.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon fi-pink">🖥️</div>
+                    <h3>MCP Server</h3>
+                    <p>Built-in MCP server. Claude Desktop and Cursor get persistent memory across all conversations. Cloud-synced.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon fi-blue">🔓</div>
                     <h3>Open Source</h3>
                     <p>MIT licensed. Run locally with Obsidian vault or use our cloud. Your data, your choice. Free forever.</p>
                 </div>
@@ -705,6 +756,26 @@ results = m.search(<span class="c-str">"database issues"</span>)
                         <td>Separate add-on</td>
                     </tr>
                     <tr>
+                        <td>Temporal queries</td>
+                        <td class="comp-col-us highlight">"What did I do last week?"</td>
+                        <td class="dim">Not available</td>
+                    </tr>
+                    <tr>
+                        <td>Conflict resolution</td>
+                        <td class="comp-col-us highlight">Auto-archives contradicted facts</td>
+                        <td class="dim">Duplicates everything</td>
+                    </tr>
+                    <tr>
+                        <td>Entity deduplication</td>
+                        <td class="comp-col-us highlight">"Ali" + "Ali Baizhanov" → auto-merge</td>
+                        <td class="dim">Manual only</td>
+                    </tr>
+                    <tr>
+                        <td>Multi-client</td>
+                        <td class="comp-col-us highlight">Claude + ChatGPT + Cursor</td>
+                        <td>API only</td>
+                    </tr>
+                    <tr>
                         <td>Claude Desktop MCP</td>
                         <td class="comp-col-us highlight">Native support</td>
                         <td class="dim">Not available</td>
@@ -731,6 +802,144 @@ results = m.search(<span class="c-str">"database issues"</span>)
                     </tr>
                 </tbody>
             </table>
+        </section>
+
+        <!-- Setup Guide -->
+        <section class="setup-section" id="setup">
+            <div class="features-title">
+                <h2>Works with your favorite AI</h2>
+                <p>One memory, all your AI tools. Set up in 2 minutes.</p>
+            </div>
+
+            <div class="setup-tabs">
+                <button class="setup-tab active" onclick="showSetup('claude')">🟣 Claude Desktop</button>
+                <button class="setup-tab" onclick="showSetup('chatgpt')">🟢 ChatGPT</button>
+                <button class="setup-tab" onclick="showSetup('cursor')">🔵 Cursor</button>
+            </div>
+
+            <div class="setup-content" id="setup-claude">
+                <div class="setup-steps">
+                    <div class="local-step">
+                        <div class="step-num">1</div>
+                        <div>
+                            <h4>Get your API key</h4>
+                            <p class="step-desc">Sign up above — free, no credit card.</p>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">2</div>
+                        <div>
+                            <h4>Install</h4>
+                            <code>pip install mengram-ai</code>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">3</div>
+                        <div>
+                            <h4>Add to Claude Desktop config</h4>
+                            <p class="step-desc">Open <code>claude_desktop_config.json</code> and add:</p>
+                            <div class="setup-code">
+                                <pre>{
+  "mcpServers": {
+    "mengram": {
+      "command": "mengram",
+      "args": ["server", "--cloud"],
+      "env": {
+        "MENGRAM_API_KEY": "mg-your-key"
+      }
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">4</div>
+                        <div>
+                            <h4>Restart Claude Desktop</h4>
+                            <p class="step-desc">Done! Claude now remembers everything across conversations. Try: "What do you know about me?"</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-content" id="setup-chatgpt" style="display:none">
+                <div class="setup-steps">
+                    <div class="local-step">
+                        <div class="step-num">1</div>
+                        <div>
+                            <h4>Open Mengram GPT</h4>
+                            <p class="step-desc">Click this link to open Mengram in ChatGPT:<br>
+                            <a href="#" class="setup-link" id="gpt-link">→ Open Mengram GPT</a><br>
+                            <span style="color:#888; font-size:12px;">Requires ChatGPT Plus ($20/month)</span></p>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">2</div>
+                        <div>
+                            <h4>Sign in with email</h4>
+                            <p class="step-desc">ChatGPT will ask you to connect Mengram. Click "Sign in" → enter your email → verification code → done.</p>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">3</div>
+                        <div>
+                            <h4>Start chatting</h4>
+                            <p class="step-desc">That's it! ChatGPT now automatically saves and recalls your memory. No setup, no API keys to manage.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-content" id="setup-cursor" style="display:none">
+                <div class="setup-steps">
+                    <div class="local-step">
+                        <div class="step-num">1</div>
+                        <div>
+                            <h4>Get your API key</h4>
+                            <p class="step-desc">Sign up above — free, no credit card.</p>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">2</div>
+                        <div>
+                            <h4>Install</h4>
+                            <code>pip install mengram-ai</code>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">3</div>
+                        <div>
+                            <h4>Add to Cursor MCP config</h4>
+                            <p class="step-desc">Create or edit <code>~/.cursor/mcp.json</code>:</p>
+                            <div class="setup-code">
+                                <pre>{
+  "mcpServers": {
+    "mengram": {
+      "command": "mengram",
+      "args": ["server", "--cloud"],
+      "env": {
+        "MENGRAM_API_KEY": "mg-your-key"
+      }
+    }
+  }
+}</pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="local-step">
+                        <div class="step-num">4</div>
+                        <div>
+                            <h4>Restart Cursor</h4>
+                            <p class="step-desc">Cursor now remembers your codebase decisions, patterns, and solutions across projects.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-note">
+                <p>🔄 <strong>Shared memory</strong> — save in Claude, recall in ChatGPT. All clients share the same memory.</p>
+            </div>
         </section>
 
         <!-- Local Install -->
