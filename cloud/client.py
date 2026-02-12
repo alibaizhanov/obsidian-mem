@@ -45,7 +45,7 @@ class CloudMemory:
     Data stored in cloud PostgreSQL — works from any device.
     """
 
-    DEFAULT_BASE_URL = "https://api.mengram.dev"
+    DEFAULT_BASE_URL = "https://mengram.io"
 
     def __init__(self, api_key: str, base_url: str = None):
         self.api_key = api_key
