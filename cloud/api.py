@@ -374,7 +374,7 @@ def create_cloud_api() -> FastAPI:
         names = [(e["name"], e.get("type", "unknown")) for e in entities]
         merged = []
 
-        # Compare all pairs — find substring matches
+        # Compare all pairs — find word-boundary matches (e.g. "Ali" + "Ali Baizhanov")
         processed = set()
         for i, (name_a, _) in enumerate(names):
             if name_a in processed:
@@ -384,7 +384,13 @@ def create_cloud_api() -> FastAPI:
                     continue
                 a_lower = name_a.strip().lower()
                 b_lower = name_b.strip().lower()
-                if a_lower in b_lower or b_lower in a_lower:
+                # One must start with the other + space, or be equal
+                is_match = (
+                    b_lower.startswith(a_lower + " ") or
+                    a_lower.startswith(b_lower + " ") or
+                    a_lower == b_lower
+                )
+                if is_match:
                     # Merge shorter into longer
                     canonical = name_a if len(name_a) >= len(name_b) else name_b
                     shorter = name_b if canonical == name_a else name_a

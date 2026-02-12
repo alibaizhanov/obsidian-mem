@@ -121,19 +121,25 @@ class CloudStore:
     # ---- Entities ----
 
     def find_duplicate(self, user_id: str, name: str) -> Optional[tuple]:
-        """Find existing entity that matches this name (substring or containment).
+        """Find existing entity that matches this name.
+        Only matches if: same type context AND one name is a complete word prefix/suffix of the other.
         Returns (entity_id, canonical_name) or None."""
         name_lower = name.strip().lower()
-        if not name_lower:
+        if not name_lower or len(name_lower) < 3:
             return None
 
         with self.conn.cursor() as cur:
-            # Find entities where one name contains the other
+            # Find entities where one name starts with the other + space
+            # e.g. "Ali" matches "Ali Baizhanov" but "Rust" does NOT match "Rustem"
             cur.execute(
-                """SELECT id, name FROM entities 
+                """SELECT id, name, type FROM entities 
                    WHERE user_id = %s AND name != %s
-                   AND (LOWER(name) LIKE %s OR %s LIKE '%%' || LOWER(name) || '%%')""",
-                (user_id, name, f"%{name_lower}%", name_lower)
+                   AND (
+                       LOWER(name) LIKE %s || ' %%'
+                       OR %s LIKE LOWER(name) || ' %%'
+                       OR LOWER(name) = %s
+                   )""",
+                (user_id, name, name_lower, name_lower, name_lower)
             )
             matches = cur.fetchall()
             if not matches:
