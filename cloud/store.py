@@ -120,26 +120,127 @@ class CloudStore:
 
     # ---- Entities ----
 
+    def find_duplicate(self, user_id: str, name: str) -> Optional[tuple]:
+        """Find existing entity that matches this name (substring or containment).
+        Returns (entity_id, canonical_name) or None."""
+        name_lower = name.strip().lower()
+        if not name_lower:
+            return None
+
+        with self.conn.cursor() as cur:
+            # Find entities where one name contains the other
+            cur.execute(
+                """SELECT id, name FROM entities 
+                   WHERE user_id = %s AND name != %s
+                   AND (LOWER(name) LIKE %s OR %s LIKE '%%' || LOWER(name) || '%%')""",
+                (user_id, name, f"%{name_lower}%", name_lower)
+            )
+            matches = cur.fetchall()
+            if not matches:
+                return None
+
+            # Pick the longest name as canonical
+            best = max(matches, key=lambda m: len(m[1]))
+            canonical_name = best[1] if len(best[1]) >= len(name) else name
+            return (str(best[0]), canonical_name)
+
+    def merge_entities(self, user_id: str, source_id: str, target_id: str,
+                       target_name: str):
+        """Merge source entity into target. Moves facts, relations, knowledge, embeddings."""
+        with self.conn.cursor() as cur:
+            # Move facts (skip duplicates)
+            cur.execute(
+                """INSERT INTO facts (entity_id, content)
+                   SELECT %s, content FROM facts WHERE entity_id = %s
+                   ON CONFLICT (entity_id, content) DO NOTHING""",
+                (target_id, source_id)
+            )
+
+            # Move knowledge (skip duplicates)
+            cur.execute(
+                """INSERT INTO knowledge (entity_id, type, title, content, artifact)
+                   SELECT %s, type, title, content, artifact FROM knowledge WHERE entity_id = %s
+                   ON CONFLICT (entity_id, title) DO NOTHING""",
+                (target_id, source_id)
+            )
+
+            # Move relations — update source_id references
+            cur.execute(
+                """UPDATE relations SET source_id = %s 
+                   WHERE source_id = %s 
+                   AND NOT EXISTS (
+                       SELECT 1 FROM relations r2 
+                       WHERE r2.source_id = %s AND r2.target_id = relations.target_id AND r2.type = relations.type
+                   )""",
+                (target_id, source_id, target_id)
+            )
+            cur.execute(
+                """UPDATE relations SET target_id = %s 
+                   WHERE target_id = %s 
+                   AND NOT EXISTS (
+                       SELECT 1 FROM relations r2 
+                       WHERE r2.source_id = relations.source_id AND r2.target_id = %s AND r2.type = relations.type
+                   )""",
+                (target_id, source_id, target_id)
+            )
+
+            # Move embeddings
+            cur.execute(
+                "UPDATE embeddings SET entity_id = %s WHERE entity_id = %s",
+                (target_id, source_id)
+            )
+
+            # Delete leftover relations and source entity
+            cur.execute("DELETE FROM relations WHERE source_id = %s OR target_id = %s", (source_id, source_id))
+            cur.execute("DELETE FROM facts WHERE entity_id = %s", (source_id,))
+            cur.execute("DELETE FROM knowledge WHERE entity_id = %s", (source_id,))
+            cur.execute("DELETE FROM entities WHERE id = %s", (source_id,))
+
+        print(f"🔀 Merged entity {source_id} into {target_id} ({target_name})", file=sys.stderr)
+
     def save_entity(self, user_id: str, name: str, type: str,
                     facts: list[str] = None,
                     relations: list[dict] = None,
                     knowledge: list[dict] = None) -> str:
         """
         Create or update entity with facts, relations, knowledge.
+        Auto-deduplicates: merges if similar entity exists.
         Returns entity_id.
         """
-        with self.conn.cursor() as cur:
-            # Upsert entity
-            cur.execute(
-                """INSERT INTO entities (user_id, name, type)
-                   VALUES (%s, %s, %s)
-                   ON CONFLICT (user_id, name) 
-                   DO UPDATE SET type = EXCLUDED.type, updated_at = NOW()
-                   RETURNING id""",
-                (user_id, name, type)
-            )
-            entity_id = str(cur.fetchone()[0])
+        # Check for duplicate entity
+        duplicate = self.find_duplicate(user_id, name)
+        if duplicate:
+            existing_id, canonical_name = duplicate
+            # If incoming name is longer, it becomes the canonical name
+            if len(name) > len(canonical_name):
+                canonical_name = name
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE entities SET name = %s, type = %s, updated_at = NOW() WHERE id = %s",
+                        (canonical_name, type, existing_id)
+                    )
+            else:
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE entities SET type = %s, updated_at = NOW() WHERE id = %s",
+                        (type, existing_id)
+                    )
+            entity_id = existing_id
+            print(f"🔀 Dedup: '{name}' → '{canonical_name}' (id: {entity_id})", file=sys.stderr)
+        else:
+            with self.conn.cursor() as cur:
+                # Upsert entity
+                cur.execute(
+                    """INSERT INTO entities (user_id, name, type)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (user_id, name) 
+                       DO UPDATE SET type = EXCLUDED.type, updated_at = NOW()
+                       RETURNING id""",
+                    (user_id, name, type)
+                )
+                entity_id = str(cur.fetchone()[0])
 
+        with self.conn.cursor() as cur:
             # Add facts (skip duplicates)
             for fact in (facts or []):
                 cur.execute(
@@ -357,11 +458,12 @@ class CloudStore:
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            # Single query: get entity + score, deduplicated by entity
+            # Single query: get entity + score + recency, deduplicated by entity
             cur.execute(
                 """SELECT DISTINCT ON (e.id)
                        e.id, e.name, e.type,
-                       1 - (emb.embedding <=> %s::vector) AS score
+                       1 - (emb.embedding <=> %s::vector) AS score,
+                       e.updated_at
                    FROM embeddings emb
                    JOIN entities e ON e.id = emb.entity_id
                    WHERE e.user_id = %s
@@ -370,22 +472,46 @@ class CloudStore:
                 (embedding_str, user_id, embedding_str, min_score)
             )
             rows = cur.fetchall()
-            # Sort by score descending and limit
-            rows = sorted(rows, key=lambda r: r["score"], reverse=True)[:top_k]
 
             if not rows:
                 return []
 
+            # Apply recency boost: entities accessed in last 7 days get +0.03, 30 days +0.01
+            import datetime
+            now = datetime.datetime.now(datetime.timezone.utc)
+            scored_rows = []
+            for row in rows:
+                score = float(row["score"])
+                if row["updated_at"]:
+                    age_days = (now - row["updated_at"].replace(tzinfo=datetime.timezone.utc)).days
+                    if age_days <= 7:
+                        score += 0.03
+                    elif age_days <= 30:
+                        score += 0.01
+                scored_rows.append((row, score))
+
+            # Sort by boosted score and limit
+            scored_rows.sort(key=lambda x: x[1], reverse=True)
+            scored_rows = scored_rows[:top_k]
+
+            # Touch accessed entities (update updated_at)
+            accessed_ids = [str(r[0]["id"]) for r in scored_rows]
+            if accessed_ids:
+                cur.execute(
+                    "UPDATE entities SET updated_at = NOW() WHERE id = ANY(%s::uuid[])",
+                    (accessed_ids,)
+                )
+
             # Batch load: get all facts, relations, knowledge in 3 queries instead of N*4
-            entity_ids = [str(row["id"]) for row in rows]
-            entity_map = {str(row["id"]): {
-                "entity": row["name"],
-                "type": row["type"],
-                "score": round(float(row["score"]), 3),
+            entity_ids = [str(r[0]["id"]) for r in scored_rows]
+            entity_map = {str(r[0]["id"]): {
+                "entity": r[0]["name"],
+                "type": r[0]["type"],
+                "score": round(r[1], 3),
                 "facts": [],
                 "relations": [],
                 "knowledge": [],
-            } for row in rows}
+            } for r in scored_rows}
 
             # Batch facts
             cur.execute(
@@ -437,7 +563,7 @@ class CloudStore:
                     })
 
             # Return in score order
-            return [entity_map[str(row["id"])] for row in rows]
+            return [entity_map[str(r[0]["id"])] for r in scored_rows]
 
     def search_text(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
         """Fallback text search (ILIKE)."""

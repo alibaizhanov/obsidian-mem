@@ -367,6 +367,36 @@ def create_cloud_api() -> FastAPI:
 
         return {"reindexed": count}
 
+    @app.post("/v1/dedup")
+    async def dedup(user_id: str = Depends(auth)):
+        """Find and merge duplicate entities."""
+        entities = store.get_all_entities(user_id)
+        names = [(e["name"], e.get("type", "unknown")) for e in entities]
+        merged = []
+
+        # Compare all pairs — find substring matches
+        processed = set()
+        for i, (name_a, _) in enumerate(names):
+            if name_a in processed:
+                continue
+            for j, (name_b, _) in enumerate(names):
+                if i >= j or name_b in processed:
+                    continue
+                a_lower = name_a.strip().lower()
+                b_lower = name_b.strip().lower()
+                if a_lower in b_lower or b_lower in a_lower:
+                    # Merge shorter into longer
+                    canonical = name_a if len(name_a) >= len(name_b) else name_b
+                    shorter = name_b if canonical == name_a else name_a
+                    canon_id = store.get_entity_id(user_id, canonical)
+                    short_id = store.get_entity_id(user_id, shorter)
+                    if canon_id and short_id and canon_id != short_id:
+                        store.merge_entities(user_id, short_id, canon_id, canonical)
+                        merged.append(f"{shorter} → {canonical}")
+                        processed.add(shorter)
+
+        return {"merged": merged, "count": len(merged)}
+
     @app.get("/v1/memories/full")
     async def get_all_full(user_id: str = Depends(auth)):
         """Get all memories with full facts, relations, knowledge. Single query."""
