@@ -688,11 +688,12 @@ class CloudStore:
 And these NEW facts being added:
 {json.dumps(new_facts)}
 
-Which existing facts are CONTRADICTED or SUPERSEDED by the new facts?
-Only list facts that are directly contradicted (e.g. old: "lives in Almaty" vs new: "relocated to Dubai").
-Do NOT list facts that are just different topics.
+Which existing facts should be REMOVED? Remove facts that are:
+1. CONTRADICTED by new facts (e.g. old: "lives in Almaty" vs new: "relocated to Dubai")
+2. OBVIOUSLY WRONG given the new context (e.g. "is a programming language" on a person entity that has fact "is a colleague")
+3. DUPLICATED or redundant with new facts
 
-Return ONLY a JSON array of the contradicted old fact strings, or empty array [] if none.
+Return ONLY a JSON array of the old fact strings to remove, or empty array [] if none.
 No markdown, no explanation."""
 
         try:

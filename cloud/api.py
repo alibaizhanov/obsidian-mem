@@ -413,6 +413,26 @@ def create_cloud_api() -> FastAPI:
 
         return {"merged": merged, "count": len(merged)}
 
+    @app.post("/v1/archive_fact")
+    async def archive_fact(
+        entity_name: str,
+        fact: str,
+        user_id: str = Depends(auth)
+    ):
+        """Manually archive a wrong fact."""
+        entity_id = store.get_entity_id(user_id, entity_name)
+        if not entity_id:
+            raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
+        with store.conn.cursor() as cur:
+            cur.execute(
+                """UPDATE facts SET archived = TRUE, superseded_by = 'manually archived'
+                   WHERE entity_id = %s AND content = %s AND archived = FALSE""",
+                (entity_id, fact)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Fact not found")
+        return {"archived": fact, "entity": entity_name}
+
     @app.get("/v1/timeline")
     async def timeline(
         after: str = None, before: str = None,
