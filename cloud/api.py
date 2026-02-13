@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from cloud.store import CloudStore
@@ -246,6 +246,10 @@ Be strict — only include entities that directly answer or relate to the query.
         landing_path = Path(__file__).parent / "landing.html"
         return landing_path.read_text(encoding="utf-8")
 
+    @app.get("/robots.txt", response_class=PlainTextResponse)
+    async def robots():
+        return "User-agent: *\nAllow: /\nSitemap: https://mengram.io/sitemap.xml"
+
     @app.get("/dashboard", response_class=HTMLResponse)
     async def dashboard():
         """Web dashboard."""
@@ -258,7 +262,6 @@ Be strict — only include entities that directly answer or relate to the query.
         ext_path = Path(__file__).parent / "mengram-chrome-extension.zip"
         if not ext_path.exists():
             raise HTTPException(status_code=404, detail="Extension not available")
-        store.log_usage("system", "extension_download")
         return FileResponse(
             path=str(ext_path),
             filename="mengram-chrome-extension.zip",
