@@ -581,10 +581,12 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
 
         if embedder:
             emb = embedder.embed(req.query)
-            results = store.search_vector(user_id, emb, top_k=search_limit)
+            results = store.search_vector(user_id, emb, top_k=search_limit,
+                                          query_text=req.query)
             # Fallback: if nothing found, retry with lower threshold
             if not results:
-                results = store.search_vector(user_id, emb, top_k=search_limit, min_score=0.15)
+                results = store.search_vector(user_id, emb, top_k=search_limit,
+                                              min_score=0.15, query_text=req.query)
         else:
             results = store.search_text(user_id, req.query, top_k=search_limit)
 

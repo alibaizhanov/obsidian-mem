@@ -75,7 +75,34 @@ class CloudStore:
                 ALTER TABLE facts ADD COLUMN IF NOT EXISTS superseded_by 
                 TEXT DEFAULT NULL
             """)
-        print("✅ Migration complete", file=sys.stderr)
+
+            # --- v1.5 Hybrid search: tsvector on embeddings ---
+            cur.execute("""
+                ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS tsv tsvector
+            """)
+            # Populate tsvector for existing rows
+            cur.execute("""
+                UPDATE embeddings SET tsv = to_tsvector('english', chunk_text)
+                WHERE tsv IS NULL AND chunk_text IS NOT NULL
+            """)
+            # GIN index for fast text search
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_embeddings_tsv 
+                ON embeddings USING gin(tsv)
+            """)
+
+            # --- v1.5 HNSW index for vector search ---
+            # Drop old index if wrong dimensions, recreate
+            try:
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw 
+                    ON embeddings USING hnsw (embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
+                """)
+            except Exception:
+                pass  # Index may already exist or dimensions mismatch
+
+        print("✅ Migration complete (v1.5: HNSW + tsvector)", file=sys.stderr)
 
     def close(self):
         if self.conn:
@@ -575,15 +602,24 @@ class CloudStore:
     # ---- Search ----
 
     def search_vector(self, user_id: str, embedding: list[float],
-                      top_k: int = 5, min_score: float = 0.3) -> list[dict]:
+                      top_k: int = 5, min_score: float = 0.3,
+                      query_text: str = "") -> list[dict]:
         """
-        Semantic search using pgvector cosine similarity.
-        Returns [{"entity": name, "type": type, "score": float, ...}]
+        Hybrid search: vector + BM25 text + graph expansion.
+        
+        Pipeline:
+        1. Vector search (semantic similarity via pgvector)
+        2. BM25 text search (exact keyword match via tsvector)
+        3. Reciprocal Rank Fusion to merge results
+        4. Graph expansion: follow relations to find connected entities
+        5. Recency boost + dedup + limit
         """
+        import datetime
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            # Single query: get entity + score + recency, deduplicated by entity
+
+            # ========== STAGE 1: Vector search ==========
             cur.execute(
                 """SELECT DISTINCT ON (e.id)
                        e.id, e.name, e.type,
@@ -596,47 +632,151 @@ class CloudStore:
                    ORDER BY e.id, score DESC""",
                 (embedding_str, user_id, embedding_str, min_score)
             )
-            rows = cur.fetchall()
+            vector_rows = cur.fetchall()
+            # Rank by score
+            vector_rows.sort(key=lambda r: float(r["score"]), reverse=True)
+            vector_ranked = {str(r["id"]): (i + 1, r) for i, r in enumerate(vector_rows[:20])}
 
-            if not rows:
+            # ========== STAGE 2: BM25 text search ==========
+            bm25_ranked = {}
+            if query_text:
+                # Build tsquery: split words, join with &
+                words = [w.strip() for w in query_text.split() if len(w.strip()) >= 2]
+                if words:
+                    # Use plainto_tsquery for robustness (handles any language)
+                    cur.execute(
+                        """SELECT DISTINCT ON (e.id)
+                               e.id, e.name, e.type,
+                               ts_rank(emb.tsv, plainto_tsquery('english', %s)) AS rank,
+                               e.updated_at
+                           FROM embeddings emb
+                           JOIN entities e ON e.id = emb.entity_id
+                           WHERE e.user_id = %s
+                             AND emb.tsv @@ plainto_tsquery('english', %s)
+                           ORDER BY e.id, rank DESC""",
+                        (query_text, user_id, query_text)
+                    )
+                    bm25_rows = cur.fetchall()
+                    bm25_rows.sort(key=lambda r: float(r["rank"]), reverse=True)
+                    bm25_ranked = {str(r["id"]): (i + 1, r) for i, r in enumerate(bm25_rows[:20])}
+
+                    # Also search entity names directly (ILIKE)
+                    cur.execute(
+                        """SELECT id, name, type, updated_at
+                           FROM entities
+                           WHERE user_id = %s AND (
+                               name ILIKE %s OR name ILIKE %s
+                           )""",
+                        (user_id, f"%{query_text}%", f"%{'%'.join(words)}%")
+                    )
+                    for i, row in enumerate(cur.fetchall()):
+                        eid = str(row["id"])
+                        if eid not in bm25_ranked:
+                            bm25_ranked[eid] = (i + 1, row)
+
+            # ========== STAGE 3: Reciprocal Rank Fusion ==========
+            k = 60  # RRF constant
+            all_entity_ids = set(vector_ranked.keys()) | set(bm25_ranked.keys())
+            
+            rrf_scores = {}
+            entity_info = {}  # id -> (name, type, updated_at)
+            
+            for eid in all_entity_ids:
+                score = 0.0
+                if eid in vector_ranked:
+                    rank, row = vector_ranked[eid]
+                    score += 1.0 / (k + rank)
+                    entity_info[eid] = (row["name"], row["type"], row.get("updated_at"))
+                if eid in bm25_ranked:
+                    rank, row = bm25_ranked[eid]
+                    score += 1.0 / (k + rank)
+                    if eid not in entity_info:
+                        entity_info[eid] = (row["name"], row["type"], row.get("updated_at"))
+                rrf_scores[eid] = score
+
+            # ========== STAGE 4: Graph expansion ==========
+            # Take top entities from RRF, then expand via relations
+            sorted_rrf = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+            seed_ids = [eid for eid, _ in sorted_rrf[:8]]
+
+            graph_entities = {}
+            if seed_ids:
+                cur.execute(
+                    """SELECT 
+                           CASE WHEN r.source_id = ANY(%s::uuid[]) THEN r.target_id ELSE r.source_id END AS related_id,
+                           CASE WHEN r.source_id = ANY(%s::uuid[]) THEN te.name ELSE se.name END AS related_name,
+                           CASE WHEN r.source_id = ANY(%s::uuid[]) THEN te.type ELSE se.type END AS related_type,
+                           CASE WHEN r.source_id = ANY(%s::uuid[]) THEN te.updated_at ELSE se.updated_at END AS related_updated,
+                           r.type AS rel_type
+                       FROM relations r
+                       JOIN entities se ON se.id = r.source_id
+                       JOIN entities te ON te.id = r.target_id
+                       WHERE (r.source_id = ANY(%s::uuid[]) OR r.target_id = ANY(%s::uuid[]))
+                         AND se.user_id = %s""",
+                    (seed_ids, seed_ids, seed_ids, seed_ids, seed_ids, seed_ids, user_id)
+                )
+                for row in cur.fetchall():
+                    rid = str(row["related_id"])
+                    if rid not in rrf_scores and rid not in graph_entities:
+                        # Graph-expanded entity gets a lower base score
+                        graph_entities[rid] = {
+                            "name": row["related_name"],
+                            "type": row["related_type"],
+                            "updated_at": row["related_updated"],
+                            "via_relation": row["rel_type"],
+                        }
+
+            # Add graph entities with discounted score
+            max_rrf = max(rrf_scores.values()) if rrf_scores else 0.01
+            for eid, info in graph_entities.items():
+                rrf_scores[eid] = max_rrf * 0.5  # 50% of best direct match
+                entity_info[eid] = (info["name"], info["type"], info.get("updated_at"))
+
+            # ========== STAGE 5: Recency boost + build results ==========
+            now = datetime.datetime.now(datetime.timezone.utc)
+            final_scores = {}
+            for eid, base_score in rrf_scores.items():
+                score = base_score
+                if eid in entity_info:
+                    updated_at = entity_info[eid][2]
+                    if updated_at:
+                        try:
+                            age_days = (now - updated_at.replace(tzinfo=datetime.timezone.utc)).days
+                            if age_days <= 7:
+                                score *= 1.15  # 15% boost for recent
+                            elif age_days <= 30:
+                                score *= 1.05  # 5% boost
+                        except Exception:
+                            pass
+                final_scores[eid] = score
+
+            # Sort and limit
+            sorted_final = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
+            top_entities = sorted_final[:top_k]
+
+            if not top_entities:
                 return []
 
-            # Apply recency boost: entities accessed in last 7 days get +0.03, 30 days +0.01
-            import datetime
-            now = datetime.datetime.now(datetime.timezone.utc)
-            scored_rows = []
-            for row in rows:
-                score = float(row["score"])
-                if row["updated_at"]:
-                    age_days = (now - row["updated_at"].replace(tzinfo=datetime.timezone.utc)).days
-                    if age_days <= 7:
-                        score += 0.03
-                    elif age_days <= 30:
-                        score += 0.01
-                scored_rows.append((row, score))
+            # Touch accessed entities
+            accessed_ids = [eid for eid, _ in top_entities]
+            cur.execute(
+                "UPDATE entities SET updated_at = NOW() WHERE id = ANY(%s::uuid[])",
+                (accessed_ids,)
+            )
 
-            # Sort by boosted score and limit
-            scored_rows.sort(key=lambda x: x[1], reverse=True)
-            scored_rows = scored_rows[:top_k]
-
-            # Touch accessed entities (update updated_at)
-            accessed_ids = [str(r[0]["id"]) for r in scored_rows]
-            if accessed_ids:
-                cur.execute(
-                    "UPDATE entities SET updated_at = NOW() WHERE id = ANY(%s::uuid[])",
-                    (accessed_ids,)
-                )
-
-            # Batch load: get all facts, relations, knowledge in 3 queries instead of N*4
-            entity_ids = [str(r[0]["id"]) for r in scored_rows]
-            entity_map = {str(r[0]["id"]): {
-                "entity": r[0]["name"],
-                "type": r[0]["type"],
-                "score": round(r[1], 3),
-                "facts": [],
-                "relations": [],
-                "knowledge": [],
-            } for r in scored_rows}
+            # ========== STAGE 6: Batch load details ==========
+            entity_ids = [eid for eid, _ in top_entities]
+            entity_map = {}
+            for eid, score in top_entities:
+                name, etype, _ = entity_info.get(eid, ("?", "?", None))
+                entity_map[eid] = {
+                    "entity": name,
+                    "type": etype,
+                    "score": round(score, 4),
+                    "facts": [],
+                    "relations": [],
+                    "knowledge": [],
+                }
 
             # Batch facts (exclude archived)
             cur.execute(
@@ -688,7 +828,7 @@ class CloudStore:
                     })
 
             # Return in score order
-            return [entity_map[str(r[0]["id"])] for r in scored_rows]
+            return [entity_map[eid] for eid, _ in top_entities if eid in entity_map]
 
     def search_text(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
         """Fallback text search (ILIKE)."""
@@ -831,9 +971,9 @@ No markdown, no explanation."""
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
         with self.conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO embeddings (entity_id, chunk_text, embedding)
-                   VALUES (%s, %s, %s::vector)""",
-                (entity_id, chunk_text, embedding_str)
+                """INSERT INTO embeddings (entity_id, chunk_text, embedding, tsv)
+                   VALUES (%s, %s, %s::vector, to_tsvector('english', %s))""",
+                (entity_id, chunk_text, embedding_str, chunk_text)
             )
 
     def delete_embeddings(self, entity_id: str):

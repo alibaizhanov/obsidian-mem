@@ -107,16 +107,20 @@ CREATE TABLE embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     chunk_text TEXT NOT NULL,
-    embedding vector(384),               -- all-MiniLM-L6-v2 = 384 dimensions
+    embedding vector(1536),               -- OpenAI text-embedding-3-small = 1536 dimensions
+    tsv tsvector,                         -- BM25 text search (hybrid search)
     created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_embeddings_entity ON embeddings(entity_id);
 
--- HNSW index for fast similarity search
-CREATE INDEX idx_embeddings_vector ON embeddings
+-- HNSW index for fast approximate nearest neighbor search (O(log n) vs O(n))
+CREATE INDEX idx_embeddings_hnsw ON embeddings
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+
+-- GIN index for fast BM25 text search
+CREATE INDEX idx_embeddings_tsv ON embeddings USING gin(tsv);
 
 -- ============================================
 -- 7. Usage tracking (for dashboard / billing)
