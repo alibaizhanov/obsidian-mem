@@ -134,22 +134,9 @@ class CloudStore:
                 from_pool = True
             else:
                 conn = self.conn
-                # Check if connection is alive
-                try:
-                    conn.cursor().execute("SELECT 1")
-                except Exception:
-                    logger.warning("Connection lost, reconnecting...")
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-                    self.conn = psycopg2.connect(self.database_url)
-                    self.conn.autocommit = True
-                    conn = self.conn
             yield conn
         except psycopg2.OperationalError as e:
             logger.error(f"Database connection error: {e}")
-            # Try to reconnect
             if from_pool and self._pool:
                 try:
                     self._pool.putconn(conn, close=True)
@@ -159,6 +146,13 @@ class CloudStore:
                 conn.autocommit = True
                 yield conn
             else:
+                # Reconnect single connection
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+                self.conn = psycopg2.connect(self.database_url)
+                self.conn.autocommit = True
                 raise
         finally:
             if from_pool and self._pool and conn:
@@ -167,9 +161,22 @@ class CloudStore:
                 except Exception:
                     pass
 
+    @contextmanager
+    def _cursor(self, dict_cursor=False):
+        """Get a cursor from a pooled connection. THIS is the primary DB access method.
+        All methods should use: with self._cursor() as cur: ...
+        This ensures connection pooling is actually used."""
+        factory = psycopg2.extras.DictCursor if dict_cursor else None
+        with self._get_conn() as conn:
+            cur = conn.cursor(cursor_factory=factory)
+            try:
+                yield cur
+            finally:
+                cur.close()
+
     def _migrate(self):
         """Auto-migrate: add new columns if missing."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             # facts.created_at for temporal queries
             cur.execute("""
                 ALTER TABLE facts ADD COLUMN IF NOT EXISTS created_at 
@@ -215,7 +222,7 @@ class CloudStore:
         logger.info("✅ Migration complete (v1.5: HNSW + tsvector)")
 
         # --- v1.6 Importance scoring ---
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("""
                 ALTER TABLE facts ADD COLUMN IF NOT EXISTS importance 
                 FLOAT DEFAULT 0.5
@@ -231,7 +238,7 @@ class CloudStore:
         logger.info("✅ Migration complete (v1.6: importance scoring)")
 
         # --- v1.7 Reflection system ---
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("""
                 ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS scope 
                 VARCHAR(20) DEFAULT 'insight'
@@ -274,7 +281,7 @@ class CloudStore:
 
     def create_user(self, email: str) -> str:
         """Create user, return user_id."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO users (email) VALUES (%s) RETURNING id",
                 (email,)
@@ -283,7 +290,7 @@ class CloudStore:
 
     def get_user_by_email(self, email: str) -> Optional[str]:
         """Get user_id by email."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("SELECT id FROM users WHERE email = %s", (email,))
             row = cur.fetchone()
             return str(row[0]) if row else None
@@ -294,7 +301,7 @@ class CloudStore:
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
         key_prefix = raw_key[:10]
 
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """INSERT INTO api_keys (user_id, key_hash, key_prefix, name)
                    VALUES (%s, %s, %s, %s)""",
@@ -305,7 +312,7 @@ class CloudStore:
     def verify_api_key(self, raw_key: str) -> Optional[str]:
         """Verify API key, return user_id or None."""
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """SELECT user_id FROM api_keys 
                    WHERE key_hash = %s AND is_active = TRUE""",
@@ -322,7 +329,7 @@ class CloudStore:
 
     def reset_api_key(self, user_id: str) -> str:
         """Deactivate all old keys and create a new one."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "UPDATE api_keys SET is_active = FALSE WHERE user_id = %s",
                 (user_id,)
@@ -333,7 +340,7 @@ class CloudStore:
 
     def save_email_code(self, email: str, code: str):
         """Save email verification code (expires in 10 min)."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """CREATE TABLE IF NOT EXISTS email_codes (
                     email TEXT PRIMARY KEY,
@@ -350,7 +357,7 @@ class CloudStore:
 
     def verify_email_code(self, email: str, code: str) -> bool:
         """Verify email code (valid for 10 min)."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """SELECT 1 FROM email_codes 
                    WHERE email = %s AND code = %s 
@@ -364,7 +371,7 @@ class CloudStore:
 
     def save_oauth_code(self, code: str, user_id: str, redirect_uri: str, state: str):
         """Save OAuth authorization code (expires in 5 min)."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """CREATE TABLE IF NOT EXISTS oauth_codes (
                     code TEXT PRIMARY KEY,
@@ -382,7 +389,7 @@ class CloudStore:
 
     def verify_oauth_code(self, code: str) -> Optional[dict]:
         """Verify and consume OAuth code. Returns {user_id, redirect_uri, state} or None."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT user_id, redirect_uri, state FROM oauth_codes
                    WHERE code = %s AND created_at > NOW() - INTERVAL '5 minutes'""",
@@ -400,7 +407,7 @@ class CloudStore:
     def _find_primary_person(self, user_id: str) -> Optional[tuple]:
         """Find the primary person entity for this user.
         Prefers: full name (has space) > most facts > most recent."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """SELECT e.id, e.name, COUNT(f.id) as fact_count,
                           CASE WHEN e.name LIKE '%% %%' THEN 1 ELSE 0 END as has_full_name
@@ -425,7 +432,7 @@ class CloudStore:
         if not name_lower or len(name_lower) < 3:
             return None
 
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             # Find entities where one name starts with the other + space
             # e.g. "Ali" matches "Ali Baizhanov" but "Rust" does NOT match "Rustem"
             cur.execute(
@@ -450,7 +457,7 @@ class CloudStore:
     def merge_entities(self, user_id: str, source_id: str, target_id: str,
                        target_name: str):
         """Merge source entity into target. Moves facts, relations, knowledge, embeddings."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             # Move facts (skip duplicates)
             cur.execute(
                 """INSERT INTO facts (entity_id, content)
@@ -520,13 +527,13 @@ class CloudStore:
             if primary:
                 entity_id, canonical_name = primary
                 logger.info(f"🔀 User → '{canonical_name}' (id: {entity_id})")
-                with self.conn.cursor() as cur:
+                with self._cursor() as cur:
                     cur.execute("UPDATE entities SET updated_at = NOW() WHERE id = %s", (entity_id,))
                 self._add_facts_knowledge_relations(entity_id, user_id, canonical_name, facts, relations, knowledge)
                 return entity_id
 
         # Check for case-insensitive exact match first
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "SELECT id, name FROM entities WHERE user_id = %s AND LOWER(name) = LOWER(%s)",
                 (user_id, name)
@@ -556,13 +563,13 @@ class CloudStore:
             existing_id, canonical_name = duplicate
             if len(name) > len(canonical_name):
                 canonical_name = name
-                with self.conn.cursor() as cur:
+                with self._cursor() as cur:
                     cur.execute(
                         "UPDATE entities SET name = %s, type = %s, updated_at = NOW() WHERE id = %s",
                         (canonical_name, type, existing_id)
                     )
             else:
-                with self.conn.cursor() as cur:
+                with self._cursor() as cur:
                     cur.execute(
                         "UPDATE entities SET type = %s, updated_at = NOW() WHERE id = %s",
                         (type, existing_id)
@@ -570,7 +577,7 @@ class CloudStore:
             entity_id = existing_id
             logger.info(f"🔀 Dedup: '{name}' → '{canonical_name}' (id: {entity_id})")
         else:
-            with self.conn.cursor() as cur:
+            with self._cursor() as cur:
                 cur.execute(
                     """INSERT INTO entities (user_id, name, type)
                        VALUES (%s, %s, %s)
@@ -637,7 +644,7 @@ class CloudStore:
                                         knowledge: list[dict] = None):
         """Add facts, knowledge, and relations to an entity."""
         added_facts = []
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             for fact in (facts or []):
                 importance = self.estimate_importance(fact)
                 cur.execute(
@@ -679,7 +686,7 @@ class CloudStore:
         if not target_name:
             return
 
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             # Ensure target entity exists
             cur.execute(
                 """INSERT INTO entities (user_id, name, type)
@@ -711,7 +718,7 @@ class CloudStore:
 
     def get_entity_id(self, user_id: str, name: str) -> Optional[str]:
         """Get entity ID by name."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "SELECT id FROM entities WHERE user_id = %s AND name = %s",
                 (user_id, name)
@@ -721,7 +728,7 @@ class CloudStore:
 
     def get_entity(self, user_id: str, name: str) -> Optional[CloudEntity]:
         """Get entity with all data."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 "SELECT id, name, type FROM entities WHERE user_id = %s AND name = %s",
                 (user_id, name)
@@ -769,7 +776,7 @@ class CloudStore:
 
     def get_all_entities(self, user_id: str) -> list[dict]:
         """List all entities with counts (excludes internal entities)."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT name, type, facts_count, knowledge_count, relations_count
                    FROM entity_overview WHERE user_id = %s AND name NOT LIKE '\\_%%'
@@ -780,7 +787,7 @@ class CloudStore:
 
     def get_all_entities_full(self, user_id: str) -> list[dict]:
         """Get ALL entities with full facts, relations, knowledge in 4 queries total."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # 1. Get all entities
             cur.execute(
                 "SELECT id, name, type FROM entities WHERE user_id = %s ORDER BY updated_at DESC",
@@ -859,7 +866,7 @@ class CloudStore:
         primary = self._find_primary_person(user_id)
         primary_name = primary[1] if primary else None
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # Get top entities by recent activity
             cur.execute(
                 """SELECT e.id, e.name, e.type 
@@ -928,7 +935,7 @@ class CloudStore:
 
     def delete_entity(self, user_id: str, name: str) -> bool:
         """Delete entity and all related data."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "DELETE FROM entities WHERE user_id = %s AND name = %s RETURNING id",
                 (user_id, name)
@@ -955,7 +962,7 @@ class CloudStore:
         """
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
 
             # ========== STAGE 1: Vector search ==========
             cur.execute(
@@ -1210,7 +1217,7 @@ class CloudStore:
     def search_text(self, user_id: str, query: str, top_k: int = 5) -> list[dict]:
         """Fallback text search (ILIKE)."""
         pattern = f"%{query}%"
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT DISTINCT e.name, e.type
                    FROM entities e
@@ -1242,7 +1249,7 @@ class CloudStore:
     def search_temporal(self, user_id: str, after: str = None, before: str = None,
                         top_k: int = 20) -> list[dict]:
         """Search facts by time range. Returns entities with facts created in the window."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             conditions = ["e.user_id = %s", "f.archived = FALSE"]
             params = [user_id]
 
@@ -1285,7 +1292,7 @@ class CloudStore:
                                     llm_client) -> list[str]:
         """Use LLM to find old facts contradicted by new ones. Archive them.
         Returns list of archived fact contents."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE",
                 (entity_id,)
@@ -1327,7 +1334,7 @@ No markdown, no explanation."""
         archived = []
         for old_fact in contradicted:
             if old_fact in old_facts:
-                with self.conn.cursor() as cur:
+                with self._cursor() as cur:
                     # Find matching new fact for superseded_by
                     superseded_by = new_facts[0] if new_facts else None
                     cur.execute(
@@ -1344,7 +1351,7 @@ No markdown, no explanation."""
         """Use LLM to deduplicate facts on an entity. 
         Groups similar facts, keeps the best one, archives the rest.
         Returns {kept: [...], archived: [...]}"""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE ORDER BY importance DESC, created_at DESC",
                 (entity_id,)
@@ -1395,7 +1402,7 @@ Return ONLY this JSON (no markdown):
         to_archive = result.get("archive", [])
         for fact in to_archive:
             if fact in facts:
-                with self.conn.cursor() as cur:
+                with self._cursor() as cur:
                     cur.execute(
                         """UPDATE facts SET archived = TRUE, superseded_by = 'dedup'
                            WHERE entity_id = %s AND content = %s AND archived = FALSE""",
@@ -1446,7 +1453,7 @@ Return ONLY JSON (no markdown):
 
     def get_reflection_stats(self, user_id: str) -> dict:
         """Get stats to decide if reflection is needed."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # Count new facts since last reflection
             cur.execute(
                 """SELECT MAX(refreshed_at) as last_reflection
@@ -1587,7 +1594,7 @@ Return ONLY JSON (no markdown):
                          scope: str, title: str, content: str,
                          confidence: float = 0.8, based_on: list = None):
         """Save or update a reflection."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             if entity_id:
                 # Entity reflection — upsert by entity + scope
                 cur.execute(
@@ -1616,7 +1623,7 @@ Return ONLY JSON (no markdown):
 
     def _get_or_create_global_entity(self, user_id: str) -> str:
         """Get or create a special _reflections entity for cross/temporal reflections."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """INSERT INTO entities (user_id, name, type)
                    VALUES (%s, '_reflections', 'concept')
@@ -1638,7 +1645,7 @@ Return ONLY JSON (no markdown):
 
     def _get_reflections_uncached(self, user_id: str, scope: str = None) -> list[dict]:
         """Get all reflections for a user (uncached)."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             if scope:
                 cur.execute(
                     """SELECT k.title, k.content, k.scope, k.confidence, k.refreshed_at,
@@ -1701,7 +1708,7 @@ Return ONLY JSON (no markdown):
                        embedding: list[float]):
         """Store vector embedding for an entity chunk."""
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """INSERT INTO embeddings (entity_id, chunk_text, embedding, tsv)
                    VALUES (%s, %s, %s::vector, to_tsvector('english', %s))""",
@@ -1710,7 +1717,7 @@ Return ONLY JSON (no markdown):
 
     def delete_embeddings(self, entity_id: str):
         """Remove all embeddings for entity (before reindex)."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "DELETE FROM embeddings WHERE entity_id = %s",
                 (entity_id,)
@@ -1730,7 +1737,7 @@ Return ONLY JSON (no markdown):
 
     def _get_stats_uncached(self, user_id: str) -> dict:
         """User's vault statistics (uncached)."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("SELECT COUNT(*) FROM entities WHERE user_id = %s", (user_id,))
             entities = cur.fetchone()[0]
 
@@ -1787,7 +1794,7 @@ Return ONLY JSON (no markdown):
 
     def log_usage(self, user_id: str, action: str, tokens: int = 0):
         """Log API usage."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 """INSERT INTO usage_log (user_id, action, tokens_used)
                    VALUES (%s, %s, %s)""",
@@ -1798,7 +1805,7 @@ Return ONLY JSON (no markdown):
 
     def get_graph(self, user_id: str) -> dict:
         """Get knowledge graph (nodes + edges) for visualization."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT name, type, facts_count, knowledge_count
                    FROM entity_overview WHERE user_id = %s""",
@@ -1820,7 +1827,7 @@ Return ONLY JSON (no markdown):
 
     def get_feed(self, user_id: str, limit: int = 50) -> dict:
         """Get recent facts with entity info for Memory Feed."""
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT f.id, f.content, f.created_at, f.archived,
                           f.importance, f.access_count,
@@ -1943,7 +1950,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
     def ensure_agents_table(self):
         """Create agent_runs table if not exists."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS agent_runs (
                     id SERIAL PRIMARY KEY,
@@ -1960,7 +1967,6 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 CREATE INDEX IF NOT EXISTS idx_agent_runs_user 
                 ON agent_runs(user_id, agent_type, created_at DESC)
             """)
-            self.conn.commit()
 
     def run_curator_agent(self, user_id: str, llm_client, auto_fix: bool = False) -> dict:
         """Curator Agent — finds contradictions, stale facts, duplicates, low quality."""
@@ -1970,14 +1976,19 @@ Be specific and personal, not generic. No markdown, just JSON."""
         if not entities:
             return {"status": "empty", "message": "No memories to curate"}
 
+        # Cap data to prevent LLM token overflow
         facts_lines = []
         total_facts = 0
-        for e in entities:
+        for e in entities[:50]:  # max 50 entities
             if not e["facts"]:
                 continue
             total_facts += len(e["facts"])
-            facts_str = ", ".join(e["facts"][:20])
+            facts_str = ", ".join(e["facts"][:15])  # max 15 facts per entity
             facts_lines.append(f"- {e['entity']} ({e['type']}): {facts_str}")
+        facts_text = "\n".join(facts_lines)
+        # Hard cap on text size (~8K chars ≈ 2K tokens)
+        if len(facts_text) > 8000:
+            facts_text = facts_text[:8000] + "\n... (truncated)"
         facts_text = "\n".join(facts_lines)
 
         prompt = self.AGENT_CURATOR_PROMPT.format(facts_text=facts_text)
@@ -2008,7 +2019,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 fact = item.get("fact", "")
                 entity_id = self.get_entity_id(user_id, entity_name)
                 if entity_id and fact:
-                    with self.conn.cursor() as cur:
+                    with self._cursor() as cur:
                         cur.execute(
                             "UPDATE facts SET archived = TRUE, superseded_by = 'curator: low quality' WHERE entity_id = %s AND content = %s AND archived = FALSE",
                             (entity_id, fact)
@@ -2023,7 +2034,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                     fact = item.get("fact", "")
                     entity_id = self.get_entity_id(user_id, entity_name)
                     if entity_id and fact:
-                        with self.conn.cursor() as cur:
+                        with self._cursor() as cur:
                             cur.execute(
                                 "UPDATE facts SET archived = TRUE, superseded_by = 'curator: stale' WHERE entity_id = %s AND content = %s AND archived = FALSE",
                                 (entity_id, fact)
@@ -2031,15 +2042,13 @@ Be specific and personal, not generic. No markdown, just JSON."""
                             if cur.rowcount > 0:
                                 actions_taken += 1
 
-            self.conn.commit()
 
         # Save run
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO agent_runs (user_id, agent_type, result, issues_found, actions_taken) VALUES (%s, %s, %s, %s, %s)",
                 (user_id, "curator", json.dumps(result), issues_found, actions_taken)
             )
-            self.conn.commit()
 
         result["_meta"] = {
             "issues_found": issues_found,
@@ -2060,12 +2069,14 @@ Be specific and personal, not generic. No markdown, just JSON."""
             return {"status": "empty", "message": "No memories to analyze"}
 
         facts_lines = []
-        for e in entities:
+        for e in entities[:50]:  # max 50 entities
             if not e["facts"]:
                 continue
             facts_str = ", ".join(e["facts"][:15])
             facts_lines.append(f"- {e['entity']} ({e['type']}): {facts_str}")
         facts_text = "\n".join(facts_lines)
+        if len(facts_text) > 8000:
+            facts_text = facts_text[:8000] + "\n... (truncated)"
 
         # Get existing reflections
         prev = self.get_reflections(user_id)
@@ -2098,12 +2109,11 @@ Be specific and personal, not generic. No markdown, just JSON."""
         )
 
         # Save run
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO agent_runs (user_id, agent_type, result, issues_found) VALUES (%s, %s, %s, %s)",
                 (user_id, "connector", json.dumps(result), issues_found)
             )
-            self.conn.commit()
 
         logger.info(f"🔗 Connector agent: {issues_found} insights for {user_id}")
         return result
@@ -2113,7 +2123,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         self.ensure_agents_table()
 
         # Recent facts (last 7 days)
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT f.content, e.name as entity_name, f.created_at
                 FROM facts f
@@ -2134,7 +2144,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
         # Last curator/connector results
         agent_findings = "(none)"
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT agent_type, result, issues_found, created_at
                 FROM agent_runs
@@ -2152,7 +2162,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
         # Get health score from last curator run
         health_score = "N/A"
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT result FROM agent_runs
                 WHERE user_id = %s AND agent_type = 'curator'
@@ -2183,12 +2193,11 @@ Be specific and personal, not generic. No markdown, just JSON."""
             return {"status": "error", "message": str(e)}
 
         # Save run
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO agent_runs (user_id, agent_type, result, issues_found) VALUES (%s, %s, %s, %s)",
                 (user_id, "digest", json.dumps(result), len(result.get("highlights", [])))
             )
-            self.conn.commit()
 
         logger.info(f"📰 Digest agent completed for {user_id}")
         return result
@@ -2214,7 +2223,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def get_agent_history(self, user_id: str, agent_type: str = None, limit: int = 10) -> list:
         """Get history of agent runs."""
         self.ensure_agents_table()
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             if agent_type:
                 cur.execute("""
                     SELECT agent_type, status, result, issues_found, actions_taken, created_at
@@ -2241,7 +2250,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         """Check if agents should run. Returns which agents are due."""
         self.ensure_agents_table()
         due = {}
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             for agent in ["curator", "connector", "digest"]:
                 cur.execute("""
                     SELECT created_at FROM agent_runs
@@ -2264,7 +2273,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
     def ensure_webhooks_table(self):
         """Create webhooks table if not exists."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS webhooks (
                     id SERIAL PRIMARY KEY,
@@ -2284,7 +2293,6 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 CREATE INDEX IF NOT EXISTS idx_webhooks_user
                 ON webhooks(user_id, active)
             """)
-            self.conn.commit()
 
     def create_webhook(self, user_id: str, url: str, name: str = "",
                        event_types: list = None, secret: str = "") -> dict:
@@ -2299,14 +2307,13 @@ Be specific and personal, not generic. No markdown, just JSON."""
             if et not in valid:
                 raise ValueError(f"Invalid event type: {et}. Valid: {', '.join(valid)}")
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 INSERT INTO webhooks (user_id, url, name, event_types, secret)
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING id, user_id, url, name, event_types, secret, active, created_at
             """, (user_id, url, name, json.dumps(event_types), secret))
             row = cur.fetchone()
-            self.conn.commit()
             return {
                 "id": row["id"],
                 "url": row["url"],
@@ -2319,7 +2326,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def get_webhooks(self, user_id: str) -> list:
         """Get all webhooks for a user."""
         self.ensure_webhooks_table()
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT id, url, name, event_types, active, created_at,
                        last_triggered, trigger_count, last_error
@@ -2361,23 +2368,21 @@ Be specific and personal, not generic. No markdown, just JSON."""
             return {"status": "no changes"}
 
         params.extend([webhook_id, user_id])
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 f"UPDATE webhooks SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
                 params
             )
-            self.conn.commit()
             return {"status": "updated", "id": webhook_id}
 
     def delete_webhook(self, user_id: str, webhook_id: int) -> bool:
         """Delete a webhook."""
         self.ensure_webhooks_table()
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "DELETE FROM webhooks WHERE id = %s AND user_id = %s",
                 (webhook_id, user_id)
             )
-            self.conn.commit()
             return cur.rowcount > 0
 
     def fire_webhooks(self, user_id: str, event_type: str, payload: dict):
@@ -2386,7 +2391,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         import threading
         import urllib.request
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT id, url, secret FROM webhooks
                 WHERE user_id = %s AND active = TRUE
@@ -2416,21 +2421,19 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
                 urllib.request.urlopen(req, timeout=10)
 
-                with self.conn.cursor() as cur2:
+                with self._cursor() as cur2:
                     cur2.execute("""
                         UPDATE webhooks SET last_triggered = NOW(),
                         trigger_count = trigger_count + 1, last_error = NULL
                         WHERE id = %s
                     """, (hook_id,))
-                    self.conn.commit()
             except Exception as e:
                 logger.error(f"⚠️ Webhook {hook_id} failed: {e}")
                 try:
-                    with self.conn.cursor() as cur2:
+                    with self._cursor() as cur2:
                         cur2.execute("""
                             UPDATE webhooks SET last_error = %s WHERE id = %s
                         """, (str(e)[:500], hook_id))
-                        self.conn.commit()
                 except:
                     pass
 
@@ -2450,7 +2453,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
     def ensure_teams_table(self):
         """Create teams infrastructure."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS teams (
                     id SERIAL PRIMARY KEY,
@@ -2486,14 +2489,13 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 CREATE INDEX IF NOT EXISTS idx_team_members_user
                 ON team_members(user_id)
             """)
-            self.conn.commit()
 
     def create_team(self, user_id: str, name: str, description: str = "") -> dict:
         """Create a new team. Creator becomes owner."""
         self.ensure_teams_table()
         invite_code = secrets.token_urlsafe(8)[:10]
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 INSERT INTO teams (name, description, invite_code, created_by)
                 VALUES (%s, %s, %s, %s)
@@ -2507,7 +2509,6 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 INSERT INTO team_members (team_id, user_id, role)
                 VALUES (%s, %s, 'owner')
             """, (team_id, user_id))
-            self.conn.commit()
 
             self.cache.invalidate(f"teams:{user_id}")
             return {
@@ -2522,7 +2523,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def join_team(self, user_id: str, invite_code: str) -> dict:
         """Join a team via invite code."""
         self.ensure_teams_table()
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("SELECT id, name FROM teams WHERE invite_code = %s", (invite_code,))
             team = cur.fetchone()
             if not team:
@@ -2533,9 +2534,8 @@ Be specific and personal, not generic. No markdown, just JSON."""
                     INSERT INTO team_members (team_id, user_id, role)
                     VALUES (%s, %s, 'member')
                 """, (team["id"], user_id))
-                self.conn.commit()
             except Exception:
-                self.conn.rollback()
+                pass  # autocommit mode
                 raise ValueError("Already a member of this team")
 
             self.cache.invalidate(f"teams:{user_id}")
@@ -2544,7 +2544,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def get_user_teams(self, user_id: str) -> list:
         """Get all teams user belongs to."""
         self.ensure_teams_table()
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute("""
                 SELECT t.id, t.name, t.description, t.invite_code,
                        tm.role, t.created_by, t.created_at,
@@ -2569,7 +2569,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def get_team_members(self, user_id: str, team_id: int) -> list:
         """Get members of a team (must be a member)."""
         self.ensure_teams_table()
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # Check membership
             cur.execute(
                 "SELECT role FROM team_members WHERE team_id = %s AND user_id = %s",
@@ -2592,12 +2592,11 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def leave_team(self, user_id: str, team_id: int) -> bool:
         """Leave a team."""
         self.ensure_teams_table()
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "DELETE FROM team_members WHERE team_id = %s AND user_id = %s AND role != 'owner'",
                 (team_id, user_id)
             )
-            self.conn.commit()
             left = cur.rowcount > 0
         if left:
             self.cache.invalidate(f"teams:{user_id}")
@@ -2606,7 +2605,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
     def delete_team(self, user_id: str, team_id: int) -> bool:
         """Delete a team (owner only). Shared entities become personal to their creators."""
         self.ensure_teams_table()
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "SELECT role FROM team_members WHERE team_id = %s AND user_id = %s",
                 (team_id, user_id)
@@ -2618,7 +2617,6 @@ Be specific and personal, not generic. No markdown, just JSON."""
             # Unshare all entities (they become personal again)
             cur.execute("UPDATE entities SET team_id = NULL WHERE team_id = %s", (team_id,))
             cur.execute("DELETE FROM teams WHERE id = %s", (team_id,))
-            self.conn.commit()
             self.cache.invalidate(f"teams:{user_id}")
             return True
 
@@ -2626,7 +2624,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         """Share a personal entity with a team."""
         self.ensure_teams_table()
         # Verify membership
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 "SELECT 1 FROM team_members WHERE team_id = %s AND user_id = %s",
                 (team_id, user_id)
@@ -2640,17 +2638,15 @@ Be specific and personal, not generic. No markdown, just JSON."""
             )
             if cur.rowcount == 0:
                 raise ValueError(f"Entity '{entity_name}' not found")
-            self.conn.commit()
             return {"entity": entity_name, "team_id": team_id, "status": "shared"}
 
     def unshare_entity(self, user_id: str, entity_name: str) -> dict:
         """Make a shared entity personal again."""
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "UPDATE entities SET team_id = NULL WHERE user_id = %s AND LOWER(name) = LOWER(%s)",
                 (user_id, entity_name)
             )
-            self.conn.commit()
             return {"entity": entity_name, "status": "personal"}
 
     def get_user_team_ids(self, user_id: str) -> list:
@@ -2660,7 +2656,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         if cached is not None:
             return cached
         self.ensure_teams_table()
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "SELECT team_id FROM team_members WHERE user_id = %s", (user_id,)
             )
@@ -2683,7 +2679,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
         embedding_str = f"[{','.join(str(x) for x in embedding)}]"
 
-        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # Vector search: personal + team entities
             cur.execute(
                 """SELECT DISTINCT ON (e.id)

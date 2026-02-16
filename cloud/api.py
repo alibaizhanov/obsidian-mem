@@ -209,14 +209,39 @@ Be strict — only include entities that directly answer or relate to the query.
             logger.error(f"⚠️ Re-ranking failed, returning raw results: {e}")
             return results
 
+    # ---- Rate Limiting ----
+    _rate_limits = {}  # user_id -> {"count": N, "window_start": time}
+    _rate_lock = __import__('threading').Lock()
+    RATE_LIMIT = 120  # requests per minute
+    RATE_WINDOW = 60   # seconds
+
+    def _check_rate_limit(user_id: str) -> bool:
+        """Returns True if allowed, False if rate limited."""
+        import time as _time
+        now = _time.time()
+        with _rate_lock:
+            entry = _rate_limits.get(user_id)
+            if not entry or now - entry["window_start"] >= RATE_WINDOW:
+                _rate_limits[user_id] = {"count": 1, "window_start": now}
+                return True
+            if entry["count"] >= RATE_LIMIT:
+                return False
+            entry["count"] += 1
+            return True
+
     # ---- Auth middleware ----
 
     async def auth(authorization: str = Header(...)) -> str:
-        """Verify API key, return user_id."""
+        """Verify API key, return user_id. Rate limited."""
         key = authorization.replace("Bearer ", "")
         user_id = store.verify_api_key(key)
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid API key")
+        if not _check_rate_limit(user_id):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limit exceeded ({RATE_LIMIT} requests/min). Retry in 60 seconds."
+            )
         return user_id
 
     # ---- Email helper ----
