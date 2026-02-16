@@ -67,7 +67,7 @@ def create_cloud_api() -> FastAPI:
     app = FastAPI(
         title="Mengram Cloud API",
         description="Memory layer for AI apps — hosted",
-        version="1.6.4",
+        version="1.6.5",
     )
 
     app.add_middleware(
@@ -487,7 +487,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
 
     @app.get("/v1/health")
     async def health():
-        return {"status": "ok", "version": "1.6.4"}
+        return {"status": "ok", "version": "1.6.5"}
 
     # ---- Protected endpoints ----
 
@@ -759,6 +759,33 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         with store.conn.cursor() as cur:
             cur.execute("UPDATE entities SET type = %s WHERE id = %s", (new_type, entity_id))
         return {"entity": name, "new_type": new_type}
+
+    @app.post("/v1/entity/{name}/dedup")
+    async def dedup_entity(name: str, user_id: str = Depends(auth)):
+        """Use LLM to deduplicate facts on an entity. Keeps best version, archives redundant ones."""
+        entity_id = store.get_entity_id(user_id, name)
+        if not entity_id:
+            raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
+        extractor = get_llm()
+        result = store.dedup_entity_facts(entity_id, name, extractor.llm)
+        return result
+
+    @app.post("/v1/dedup_all")
+    async def dedup_all_entities(user_id: str = Depends(auth)):
+        """Deduplicate facts across ALL entities for this user."""
+        entities = store.get_all_entities(user_id)
+        extractor = get_llm()
+        total_archived = 0
+        results = []
+        for e in entities:
+            entity_id = store.get_entity_id(user_id, e["name"])
+            if not entity_id:
+                continue
+            r = store.dedup_entity_facts(entity_id, e["name"], extractor.llm)
+            if r["archived"]:
+                total_archived += len(r["archived"])
+                results.append({"entity": e["name"], "archived": len(r["archived"])})
+        return {"total_archived": total_archived, "entities": results}
 
     @app.post("/v1/archive_fact")
     async def archive_fact(

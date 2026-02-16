@@ -1167,6 +1167,74 @@ No markdown, no explanation."""
 
         return archived
 
+    def dedup_entity_facts(self, entity_id: str, entity_name: str, llm_client) -> dict:
+        """Use LLM to deduplicate facts on an entity. 
+        Groups similar facts, keeps the best one, archives the rest.
+        Returns {kept: [...], archived: [...]}"""
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute(
+                "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE ORDER BY importance DESC, created_at DESC",
+                (entity_id,)
+            )
+            facts = [r["content"] for r in cur.fetchall()]
+
+        if len(facts) < 3:
+            return {"kept": facts, "archived": []}
+
+        prompt = f"""You are a fact deduplication system.
+
+Entity: "{entity_name}"
+Facts:
+{json.dumps(facts, ensure_ascii=False)}
+
+Many of these facts say the SAME thing in different words. Your job:
+1. Group duplicate/redundant facts together
+2. For each group, pick the SINGLE BEST version (most concise, accurate, normalized)
+3. Return JSON with facts to KEEP and facts to ARCHIVE
+
+Rules for picking the best:
+- Shorter and more specific beats longer and vague
+- "specializes in Java/Spring Boot" beats "specializes in Java" + "specializes in Spring Boot" (combined is better)
+- If one fact is strictly more informative, keep that one
+- "works in Almaty, Kazakhstan" beats "works in Almaty" (more context)
+- Remove truly obsolete facts only if a newer one clearly replaces it
+
+Return ONLY this JSON (no markdown):
+{{
+  "keep": ["fact1", "fact2", ...],
+  "archive": ["redundant1", "redundant2", ...]
+}}"""
+
+        try:
+            response = llm_client.complete(prompt)
+            clean = response.strip()
+            if clean.startswith("```"):
+                lines = clean.split("\n")
+                clean = "\n".join(lines[1:-1])
+            result = json.loads(clean)
+            if not isinstance(result, dict) or "archive" not in result:
+                return {"kept": facts, "archived": []}
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ Dedup failed: {e}", file=sys.stderr)
+            return {"kept": facts, "archived": []}
+
+        archived = []
+        to_archive = result.get("archive", [])
+        for fact in to_archive:
+            if fact in facts:
+                with self.conn.cursor() as cur:
+                    cur.execute(
+                        """UPDATE facts SET archived = TRUE, superseded_by = 'dedup'
+                           WHERE entity_id = %s AND content = %s AND archived = FALSE""",
+                        (entity_id, fact)
+                    )
+                    if cur.rowcount > 0:
+                        archived.append(fact)
+
+        kept = result.get("keep", [])
+        print(f"🧹 Dedup '{entity_name}': {len(facts)} → {len(facts)-len(archived)} facts ({len(archived)} archived)", file=sys.stderr)
+        return {"kept": kept, "archived": archived}
+
     # ---- Embeddings ----
 
     def save_embedding(self, entity_id: str, chunk_text: str,
