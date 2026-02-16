@@ -608,7 +608,7 @@
         <section class="hero">
             <div class="hero-badge anim">
                 <span class="pulse"></span>
-                Open Source · Memory Agents · Team Sharing · Free
+                Open Source · Memory Agents · Team Sharing · Python & JS SDK · Free
             </div>
             <h1 class="anim d1">Memory that<br>thinks for you.</h1>
             <p class="anim d2">Open-source AI memory layer with autonomous agents. Not just storage — Mengram cleans, connects, and finds hidden patterns in your knowledge. Team sharing, webhooks, MCP + API.</p>
@@ -655,11 +655,12 @@
         <!-- Install -->
         <section class="install-section" id="install">
             <h2>Get started in 60 seconds</h2>
-            <p>Connect Mengram to your AI tools via MCP or Python API.</p>
+            <p>Connect Mengram to your AI tools via MCP, Python, or JavaScript SDK.</p>
 
             <div class="install-tabs">
                 <button class="install-tab active" onclick="showInstall('claude')">🟣 Claude Desktop / MCP</button>
-                <button class="install-tab" onclick="showInstall('api')">🔧 Python API</button>
+                <button class="install-tab" onclick="showInstall('api')">🐍 Python</button>
+                <button class="install-tab" onclick="showInstall('js')">⚡ JavaScript</button>
             </div>
 
             <!-- Claude Desktop -->
@@ -755,9 +756,44 @@ results = m.search(<span class="c-str">"database issues"</span>)
                     </div>
                 </div>
             </div>
-        </section>
 
-        <!-- Features -->
+            <!-- JavaScript SDK -->
+            <div class="install-panel" id="panel-js">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">1</div>
+                        <div>
+                            <h4>Install</h4>
+                            <div class="code-box">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <code>npm install mengram-ai</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">2</div>
+                        <div>
+                            <h4>Use in your app</h4>
+                            <div class="code-box">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="c-kw">const</span> { MengramClient } = <span class="c-fn">require</span>(<span class="c-str">'mengram-ai'</span>);
+
+<span class="c-kw">const</span> m = <span class="c-kw">new</span> MengramClient(<span class="c-str">'your-api-key'</span>);
+
+<span class="c-cmt">// Save knowledge from conversation</span>
+<span class="c-kw">await</span> m.add([
+    { <span class="c-str">role</span>: <span class="c-str">'user'</span>, <span class="c-str">content</span>: <span class="c-str">'Fixed OOM with Redis cache'</span> },
+    { <span class="c-str">role</span>: <span class="c-str">'assistant'</span>, <span class="c-str">content</span>: <span class="c-str">'Got it.'</span> },
+], { <span class="c-str">userId</span>: <span class="c-str">'ali'</span>, <span class="c-str">agentId</span>: <span class="c-str">'support-bot'</span> });
+
+<span class="c-cmt">// Search — finds by meaning</span>
+<span class="c-kw">const</span> results = <span class="c-kw">await</span> m.search(<span class="c-str">'database issues'</span>);</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
         <section class="features-section" id="features">
             <h2>What makes Mengram different</h2>
             <p>Others store facts. Mengram thinks about them.</p>
@@ -847,7 +883,22 @@ results = m.search(<span class="c-str">"database issues"</span>)
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">MCP Server</td>
                             <td style="text-align:center;padding:10px;">✅</td>
-                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding:10px 16px;">Python & JS SDK</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding:10px 16px;">Async Mode + Job Tracking</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding:10px 16px;">Memory Categories</td>
+                            <td style="text-align:center;padding:10px;">✅ <span style="color:var(--green);font-size:11px;">user, agent, run, app</span></td>
+                            <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Self-hostable</td>
