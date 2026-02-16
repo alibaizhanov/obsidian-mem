@@ -398,7 +398,6 @@ async function tryLogin(k) {
             KEY=k; localStorage.setItem('mengram_key',k);
             document.getElementById('login-screen').style.display='none';
             document.getElementById('app').classList.add('active');
-            document.getElementById('key-display').textContent = k.substring(0,8)+'****';
             loadAll();
         } else { document.getElementById('login-error').style.display='block'; }
     } catch(e) { document.getElementById('login-error').style.display='block'; }
@@ -1031,7 +1030,7 @@ async function createNewKey() {
             body: JSON.stringify({name})
         })).json();
         if (d.key) {
-            alert('New API key created!\\n\\n' + d.key + '\\n\\nSave this — it won\\'t be shown again.');
+            alert('New API key created!\n\n' + d.key + '\n\nSave this — it will not be shown again.');
             document.getElementById('new-key-name').value = '';
             loadKeys();
         } else {
