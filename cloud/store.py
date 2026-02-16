@@ -689,10 +689,16 @@ class CloudStore:
 
     def get_existing_context(self, user_id: str, max_entities: int = 20, max_facts_per: int = 5) -> str:
         """Get compact summary of existing entities for extraction context.
+        Resolves 'User' to primary person name.
         Returns a string like:
+          The user's name is Ali Baizhanov. Always use this name instead of "User".
           - Ali Baizhanov (person): works as developer, uses Python, lives in Almaty
           - Mengram (project): AI memory protocol, built with FastAPI
         """
+        # Find primary person name
+        primary = self._find_primary_person(user_id)
+        primary_name = primary[1] if primary else None
+
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             # Get top entities by recent activity
             cur.execute(
@@ -705,6 +711,8 @@ class CloudStore:
             )
             entities = cur.fetchall()
             if not entities:
+                if primary_name:
+                    return f'The user\'s name is "{primary_name}". Always use this name instead of "User".'
                 return ""
 
             entity_ids = [str(e["id"]) for e in entities]
@@ -730,14 +738,22 @@ class CloudStore:
                 facts_by_entity[eid] = facts_by_entity[eid][:max_facts_per]
 
             lines = []
+            # Add name hint if known
+            if primary_name:
+                lines.append(f'The user\'s name is "{primary_name}". Always use "{primary_name}" instead of "User".')
+
             for e in entities:
                 eid = str(e["id"])
+                name = e["name"]
+                # Skip "User" entity from context — we want LLM to use real name
+                if name.lower() == "user":
+                    continue
                 facts = facts_by_entity.get(eid, [])
                 if facts:
                     fact_strs = ", ".join(f[0] for f in facts)
-                    lines.append(f"- {e['name']} ({e['type']}): {fact_strs}")
+                    lines.append(f"- {name} ({e['type']}): {fact_strs}")
                 else:
-                    lines.append(f"- {e['name']} ({e['type']})")
+                    lines.append(f"- {name} ({e['type']})")
             return "\n".join(lines)
 
     def delete_entity(self, user_id: str, name: str) -> bool:
