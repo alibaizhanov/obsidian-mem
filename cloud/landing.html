@@ -593,9 +593,9 @@
                 Open Source · Cross-Platform · Free
             </div>
             <h1 class="anim d1">Your AI remembers<br>you. Everywhere.</h1>
-            <p class="anim d2">One memory layer for all your AI chats. ChatGPT, Claude, Perplexity — they all know your name, your projects, your preferences. Install once, remember forever.</p>
+            <p class="anim d2">One memory layer for all your AI chats. ChatGPT, Claude, Cursor, Perplexity — they all know your name, your projects, your preferences. Connect once, remember forever.</p>
             <div class="hero-cta anim d3">
-                <a href="#install" class="btn btn-primary">⚡ Install Extension</a>
+                <a href="#install" class="btn btn-primary">⚡ Get Started Free</a>
                 <a href="#signup" class="btn btn-secondary">Get API Key →</a>
             </div>
         </section>
@@ -604,11 +604,11 @@
         <div class="platforms anim d4">
             Works with
             <div class="platforms-icons">
-                <span>💬 ChatGPT</span>
-                <span>🟣 Claude</span>
-                <span>🔍 Perplexity</span>
-                <span>🖥️ Claude Desktop</span>
+                <span>🟣 Claude Desktop</span>
                 <span>🔵 Cursor</span>
+                <span>🌊 Windsurf</span>
+                <span>💬 ChatGPT</span>
+                <span>🔍 Perplexity</span>
             </div>
         </div>
 
@@ -619,7 +619,7 @@
                 <div class="how-card">
                     <div class="how-num n1">1</div>
                     <h3>You chat with any AI</h3>
-                    <p>Use ChatGPT, Claude, Perplexity — any AI you prefer. Mengram works silently in the background.</p>
+                    <p>Use ChatGPT, Claude Desktop, Cursor, Perplexity — any AI you prefer. Mengram connects via MCP or API.</p>
                 </div>
                 <div class="how-card">
                     <div class="how-num n2">2</div>
@@ -637,53 +637,15 @@
         <!-- Install -->
         <section class="install-section" id="install">
             <h2>Get started in 60 seconds</h2>
-            <p>Choose your preferred way to connect Mengram.</p>
+            <p>Connect Mengram to your AI tools via MCP or Python API.</p>
 
             <div class="install-tabs">
-                <button class="install-tab active" onclick="showInstall('ext')">🌐 Chrome Extension</button>
-                <button class="install-tab" onclick="showInstall('claude')">🟣 Claude Desktop</button>
+                <button class="install-tab active" onclick="showInstall('claude')">🟣 Claude Desktop / MCP</button>
                 <button class="install-tab" onclick="showInstall('api')">🔧 Python API</button>
             </div>
 
-            <!-- Chrome Extension -->
-            <div class="install-panel active" id="panel-ext">
-                <div class="steps">
-                    <div class="step">
-                        <div class="step-num">1</div>
-                        <div>
-                            <h4>Get your API key</h4>
-                            <p><a href="#signup" style="color: var(--accent);">Sign up below</a> — free, 30 seconds, no credit card.</p>
-                        </div>
-                    </div>
-                    <div class="step">
-                        <div class="step-num">2</div>
-                        <div>
-                            <h4>Download extension</h4>
-                            <p>Download the zip file and unpack it.</p>
-                            <a href="/extension/download" class="btn btn-primary" style="margin-top: 10px; padding: 10px 20px; font-size: 14px;">
-                                ↓ Download Extension (.zip)
-                            </a>
-                        </div>
-                    </div>
-                    <div class="step">
-                        <div class="step-num">3</div>
-                        <div>
-                            <h4>Load in Chrome</h4>
-                            <p>Go to <code style="color: var(--accent); background: var(--accent-dim); padding: 2px 8px; border-radius: 4px; font-size: 13px;">chrome://extensions</code> → Enable Developer mode → "Load unpacked" → select the folder.</p>
-                        </div>
-                    </div>
-                    <div class="step">
-                        <div class="step-num">4</div>
-                        <div>
-                            <h4>Paste your API key</h4>
-                            <p>Click the Mengram icon in Chrome toolbar → paste your API key → Save. Done! Open ChatGPT and start chatting.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Claude Desktop -->
-            <div class="install-panel" id="panel-claude">
+            <div class="install-panel active" id="panel-claude">
                 <div class="steps">
                     <div class="step">
                         <div class="step-num">1</div>
@@ -895,7 +857,7 @@ results = m.search(<span class="c-str">"database issues"</span>)
                             <button onclick="copyKey()">Copy</button>
                         </div>
                         <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
-                            <a href="#install" class="btn btn-primary" style="padding:10px 18px; font-size:13px;">⚡ Install Extension</a>
+                            <a href="#install" class="btn btn-primary" style="padding:10px 18px; font-size:13px;">⚡ Get Started</a>
                             <a href="/dashboard" class="btn btn-secondary" style="padding:10px 18px; font-size:13px;">📊 Open Dashboard</a>
                         </div>
                     `;
