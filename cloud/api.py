@@ -12,9 +12,18 @@ Developers get API key, integrate in 3 lines:
 
 import os
 import sys
+import logging
 import secrets
 from typing import Optional
 from pathlib import Path
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    stream=sys.stderr,
+)
+logger = logging.getLogger("mengram")
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -197,7 +206,7 @@ Be strict — only include entities that directly answer or relate to the query.
             return results  # fallback if parsing fails
 
         except Exception as e:
-            print(f"⚠️ Re-ranking failed, returning raw results: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Re-ranking failed, returning raw results: {e}")
             return results
 
     # ---- Auth middleware ----
@@ -216,7 +225,7 @@ Be strict — only include entities that directly answer or relate to the query.
         """Send API key to user via Resend."""
         resend_key = os.environ.get("RESEND_API_KEY")
         if not resend_key:
-            print("⚠️  RESEND_API_KEY not set, skipping email", file=sys.stderr)
+            logger.info("⚠️  RESEND_API_KEY not set, skipping email")
             return
 
         try:
@@ -260,9 +269,9 @@ Be strict — only include entities that directly answer or relate to the query.
                 "subject": subject,
                 "html": html,
             })
-            print(f"📧 Email sent to {email} (key {action})", file=sys.stderr)
+            logger.info(f"📧 Email sent to {email} (key {action})")
         except Exception as e:
-            print(f"⚠️  Email send failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️  Email send failed: {e}")
 
     # ---- Public endpoints ----
 
@@ -453,10 +462,10 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                     "html": f"<h2>Your code: {code}</h2><p>Expires in 10 minutes.</p>",
                 })
             except Exception as e:
-                print(f"⚠️ Email send failed: {e}", file=sys.stderr)
+                logger.error(f"⚠️ Email send failed: {e}")
                 return {"ok": False, "error": "Failed to send email"}
         else:
-            print(f"⚠️ No RESEND_API_KEY, code for {email}: {code}", file=sys.stderr)
+            logger.warning(f"⚠️ No RESEND_API_KEY, code for {email}: {code}")
 
         return {"ok": True}
 
@@ -513,7 +522,14 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
 
     @app.get("/v1/health", tags=["System"])
     async def health():
-        return {"status": "ok", "version": "2.2.0"}
+        cache_stats = store.cache.stats()
+        pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
+        return {
+            "status": "ok",
+            "version": "2.2.0",
+            "cache": cache_stats,
+            "connection": pool_info,
+        }
 
     # ---- Protected endpoints ----
 
@@ -535,7 +551,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                 try:
                     existing_context = store.get_existing_context(user_id)
                 except Exception as e:
-                    print(f"⚠️ Context fetch failed: {e}", file=sys.stderr)
+                    logger.error(f"⚠️ Context fetch failed: {e}")
 
                 extraction = extractor.extract(conversation, existing_context=existing_context)
 
@@ -587,7 +603,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                                     "new_facts": entity.facts
                                 })
                         except Exception as e:
-                            print(f"⚠️ Conflict check failed: {e}", file=sys.stderr)
+                            logger.error(f"⚠️ Conflict check failed: {e}")
 
                     entity_id = store.save_entity(
                         user_id=user_id,
@@ -616,18 +632,18 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                             store.save_embedding(entity_id, chunk, emb)
 
                 store.log_usage(user_id, "add")
-                print(f"✅ Background add complete for {user_id}", file=sys.stderr)
+                logger.info(f"✅ Background add complete for {user_id}")
 
                 # Auto-trigger reflection if needed
                 try:
                     if store.should_reflect(user_id):
-                        print(f"🧠 Auto-reflection triggered for {user_id}", file=sys.stderr)
+                        logger.info(f"🧠 Auto-reflection triggered for {user_id}")
                         extractor2 = get_llm()
                         store.generate_reflections(user_id, extractor2.llm)
                 except Exception as e:
-                    print(f"⚠️ Auto-reflection failed: {e}", file=sys.stderr)
+                    logger.error(f"⚠️ Auto-reflection failed: {e}")
             except Exception as e:
-                print(f"❌ Background add failed: {e}", file=sys.stderr)
+                logger.error(f"❌ Background add failed: {e}")
 
         threading.Thread(target=process_in_background, daemon=True).start()
 
@@ -1148,9 +1164,9 @@ def main():
     app = create_cloud_api()
     port = int(os.environ.get("PORT", 8420))
 
-    print(f"🧠 Mengram Cloud API", file=sys.stderr)
-    print(f"   http://0.0.0.0:{port}", file=sys.stderr)
-    print(f"   Docs: http://localhost:{port}/docs", file=sys.stderr)
+    logger.info(f"🧠 Mengram Cloud API")
+    logger.info(f"   http://0.0.0.0:{port}")
+    logger.info(f"   Docs: http://localhost:{port}/docs")
 
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 

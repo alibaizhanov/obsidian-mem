@@ -13,11 +13,15 @@ Usage:
 import datetime
 import hashlib
 import json
+import logging
 import math
 import secrets
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
+from contextlib import contextmanager
 
 try:
     import asyncpg
@@ -28,9 +32,51 @@ except ImportError:
 try:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
+
+logger = logging.getLogger("mengram")
+
+# ---- Simple TTL Cache ----
+class TTLCache:
+    """Thread-safe in-memory cache with TTL."""
+    def __init__(self, default_ttl: int = 60):
+        self._store = {}
+        self._lock = threading.Lock()
+        self.default_ttl = default_ttl
+
+    def get(self, key: str):
+        with self._lock:
+            item = self._store.get(key)
+            if item and item["expires"] > time.time():
+                return item["value"]
+            if item:
+                del self._store[key]
+            return None
+
+    def set(self, key: str, value, ttl: int = None):
+        with self._lock:
+            self._store[key] = {
+                "value": value,
+                "expires": time.time() + (ttl or self.default_ttl)
+            }
+
+    def invalidate(self, prefix: str = ""):
+        with self._lock:
+            if not prefix:
+                self._store.clear()
+            else:
+                keys = [k for k in self._store if k.startswith(prefix)]
+                for k in keys:
+                    del self._store[k]
+
+    def stats(self) -> dict:
+        with self._lock:
+            now = time.time()
+            alive = sum(1 for v in self._store.values() if v["expires"] > now)
+            return {"total_keys": len(self._store), "alive": alive}
 
 
 @dataclass
@@ -47,17 +93,79 @@ class CloudStore:
     """
     PostgreSQL storage backend for Mengram Cloud.
     
-    Sync API (psycopg2) for simplicity. 
-    Can be swapped to async (asyncpg) for production.
+    Features:
+    - Connection pooling (ThreadedConnectionPool) for concurrent requests
+    - TTL cache for frequent reads (stats, entities, insights)
+    - Auto-reconnect on connection failures
+    - Proper logging
     """
 
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, pool_min: int = 2, pool_max: int = 10):
         if not PSYCOPG2_AVAILABLE:
             raise ImportError("pip install psycopg2-binary")
         self.database_url = database_url
+        self.cache = TTLCache(default_ttl=30)
+
+        # Connection pool
+        try:
+            self._pool = psycopg2.pool.ThreadedConnectionPool(
+                pool_min, pool_max, database_url
+            )
+            logger.info(f"Connection pool created ({pool_min}-{pool_max})")
+        except Exception as e:
+            logger.warning(f"Pool creation failed, falling back to single connection: {e}")
+            self._pool = None
+
+        # Fallback single connection (also used for migrations)
         self.conn = psycopg2.connect(database_url)
         self.conn.autocommit = True
         self._migrate()
+
+    @contextmanager
+    def _get_conn(self):
+        """Get a connection from pool (or fallback to self.conn).
+        Auto-returns to pool on exit. Auto-reconnects on failure."""
+        conn = None
+        from_pool = False
+        try:
+            if self._pool:
+                conn = self._pool.getconn()
+                conn.autocommit = True
+                from_pool = True
+            else:
+                conn = self.conn
+                # Check if connection is alive
+                try:
+                    conn.cursor().execute("SELECT 1")
+                except Exception:
+                    logger.warning("Connection lost, reconnecting...")
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    self.conn = psycopg2.connect(self.database_url)
+                    self.conn.autocommit = True
+                    conn = self.conn
+            yield conn
+        except psycopg2.OperationalError as e:
+            logger.error(f"Database connection error: {e}")
+            # Try to reconnect
+            if from_pool and self._pool:
+                try:
+                    self._pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = self._pool.getconn()
+                conn.autocommit = True
+                yield conn
+            else:
+                raise
+        finally:
+            if from_pool and self._pool and conn:
+                try:
+                    self._pool.putconn(conn)
+                except Exception:
+                    pass
 
     def _migrate(self):
         """Auto-migrate: add new columns if missing."""
@@ -104,7 +212,7 @@ class CloudStore:
             except Exception:
                 pass  # Index may already exist or dimensions mismatch
 
-        print("✅ Migration complete (v1.5: HNSW + tsvector)", file=sys.stderr)
+        logger.info("✅ Migration complete (v1.5: HNSW + tsvector)")
 
         # --- v1.6 Importance scoring ---
         with self.conn.cursor() as cur:
@@ -120,7 +228,7 @@ class CloudStore:
                 ALTER TABLE facts ADD COLUMN IF NOT EXISTS last_accessed 
                 TIMESTAMPTZ DEFAULT NULL
             """)
-        print("✅ Migration complete (v1.6: importance scoring)", file=sys.stderr)
+        logger.info("✅ Migration complete (v1.6: importance scoring)")
 
         # --- v1.7 Reflection system ---
         with self.conn.cursor() as cur:
@@ -153,9 +261,12 @@ class CloudStore:
                 CREATE INDEX IF NOT EXISTS idx_knowledge_user 
                 ON knowledge (user_id) WHERE user_id IS NOT NULL
             """)
-        print("✅ Migration complete (v1.7: reflection system)", file=sys.stderr)
+        logger.info("✅ Migration complete (v1.7: reflection system)")
 
     def close(self):
+        if self._pool:
+            self._pool.closeall()
+            logger.info("Connection pool closed")
         if self.conn:
             self.conn.close()
 
@@ -388,7 +499,7 @@ class CloudStore:
             cur.execute("DELETE FROM knowledge WHERE entity_id = %s", (source_id,))
             cur.execute("DELETE FROM entities WHERE id = %s", (source_id,))
 
-        print(f"🔀 Merged entity {source_id} into {target_id} ({target_name})", file=sys.stderr)
+        logger.info(f"🔀 Merged entity {source_id} into {target_id} ({target_name})")
 
     def save_entity(self, user_id: str, name: str, type: str,
                     facts: list[str] = None,
@@ -408,7 +519,7 @@ class CloudStore:
             primary = self._find_primary_person(user_id)
             if primary:
                 entity_id, canonical_name = primary
-                print(f"🔀 User → '{canonical_name}' (id: {entity_id})", file=sys.stderr)
+                logger.info(f"🔀 User → '{canonical_name}' (id: {entity_id})")
                 with self.conn.cursor() as cur:
                     cur.execute("UPDATE entities SET updated_at = NOW() WHERE id = %s", (entity_id,))
                 self._add_facts_knowledge_relations(entity_id, user_id, canonical_name, facts, relations, knowledge)
@@ -457,7 +568,7 @@ class CloudStore:
                         (type, existing_id)
                     )
             entity_id = existing_id
-            print(f"🔀 Dedup: '{name}' → '{canonical_name}' (id: {entity_id})", file=sys.stderr)
+            logger.info(f"🔀 Dedup: '{name}' → '{canonical_name}' (id: {entity_id})")
         else:
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -594,6 +705,9 @@ class CloudStore:
                    ON CONFLICT (source_id, target_id, type) DO NOTHING""",
                 (src, tgt, rel.get("type", "related_to"), rel.get("description", ""))
             )
+
+        # Invalidate caches after write
+        self.cache.invalidate(f"stats:{user_id}")
 
     def get_entity_id(self, user_id: str, name: str) -> Optional[str]:
         """Get entity ID by name."""
@@ -819,7 +933,10 @@ class CloudStore:
                 "DELETE FROM entities WHERE user_id = %s AND name = %s RETURNING id",
                 (user_id, name)
             )
-            return cur.fetchone() is not None
+            deleted = cur.fetchone() is not None
+        if deleted:
+            self.cache.invalidate(f"stats:{user_id}")
+        return deleted
 
     # ---- Search ----
 
@@ -1203,7 +1320,7 @@ No markdown, no explanation."""
             if not isinstance(contradicted, list):
                 return []
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Conflict resolution failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Conflict resolution failed: {e}")
             return []
 
         # Archive contradicted facts
@@ -1219,7 +1336,7 @@ No markdown, no explanation."""
                         (superseded_by, entity_id, old_fact)
                     )
                 archived.append(old_fact)
-                print(f"📦 Archived: '{old_fact}' → superseded by '{superseded_by}'", file=sys.stderr)
+                logger.info(f"📦 Archived: '{old_fact}' → superseded by '{superseded_by}'")
 
         return archived
 
@@ -1271,7 +1388,7 @@ Return ONLY this JSON (no markdown):
             if not isinstance(result, dict) or "archive" not in result:
                 return {"kept": facts, "archived": []}
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Dedup failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Dedup failed: {e}")
             return {"kept": facts, "archived": []}
 
         archived = []
@@ -1288,7 +1405,7 @@ Return ONLY this JSON (no markdown):
                         archived.append(fact)
 
         kept = result.get("keep", [])
-        print(f"🧹 Dedup '{entity_name}': {len(facts)} → {len(facts)-len(archived)} facts ({len(archived)} archived)", file=sys.stderr)
+        logger.info(f"🧹 Dedup '{entity_name}': {len(facts)} → {len(facts)-len(archived)} facts ({len(archived)} archived)")
         return {"kept": kept, "archived": archived}
 
     # ---- Reflection Engine ----
@@ -1419,7 +1536,7 @@ Return ONLY JSON (no markdown):
                 clean = "\n".join(lines[1:-1])
             result = json.loads(clean)
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Reflection generation failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Reflection generation failed: {e}")
             return {"entity_reflections": [], "cross_entity": [], "temporal": []}
 
         # Save reflections
@@ -1463,7 +1580,7 @@ Return ONLY JSON (no markdown):
             )
             saved["temporal"] += 1
 
-        print(f"🧠 Reflections generated for {user_id}: {saved}", file=sys.stderr)
+        logger.info(f"🧠 Reflections generated for {user_id}: {saved}")
         return result
 
     def _save_reflection(self, user_id: str, entity_id: Optional[str],
@@ -1510,7 +1627,17 @@ Return ONLY JSON (no markdown):
             return str(cur.fetchone()[0])
 
     def get_reflections(self, user_id: str, scope: str = None) -> list[dict]:
-        """Get all reflections for a user, optionally filtered by scope."""
+        """Get all reflections for a user. Cached 120s."""
+        cache_key = f"reflections:{user_id}:{scope or 'all'}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+        result = self._get_reflections_uncached(user_id, scope)
+        self.cache.set(cache_key, result, ttl=120)
+        return result
+
+    def _get_reflections_uncached(self, user_id: str, scope: str = None) -> list[dict]:
+        """Get all reflections for a user (uncached)."""
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             if scope:
                 cur.execute(
@@ -1592,7 +1719,17 @@ Return ONLY JSON (no markdown):
     # ---- Stats ----
 
     def get_stats(self, user_id: str) -> dict:
-        """User's vault statistics."""
+        """User's vault statistics. Cached for 30s."""
+        cache_key = f"stats:{user_id}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+        result = self._get_stats_uncached(user_id)
+        self.cache.set(cache_key, result, ttl=30)
+        return result
+
+    def _get_stats_uncached(self, user_id: str) -> dict:
+        """User's vault statistics (uncached)."""
         with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute("SELECT COUNT(*) FROM entities WHERE user_id = %s", (user_id,))
             entities = cur.fetchone()[0]
@@ -1853,7 +1990,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 clean = "\n".join(lines[1:-1])
             result = json.loads(clean)
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Curator agent failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Curator agent failed: {e}")
             return {"status": "error", "message": str(e)}
 
         issues_found = (
@@ -1911,7 +2048,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             "auto_fix": auto_fix
         }
 
-        print(f"🧹 Curator agent: {issues_found} issues, {actions_taken} auto-fixed for {user_id}", file=sys.stderr)
+        logger.info(f"🧹 Curator agent: {issues_found} issues, {actions_taken} auto-fixed for {user_id}")
         return result
 
     def run_connector_agent(self, user_id: str, llm_client) -> dict:
@@ -1950,7 +2087,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 clean = "\n".join(lines[1:-1])
             result = json.loads(clean)
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Connector agent failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Connector agent failed: {e}")
             return {"status": "error", "message": str(e)}
 
         issues_found = (
@@ -1968,7 +2105,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             )
             self.conn.commit()
 
-        print(f"🔗 Connector agent: {issues_found} insights for {user_id}", file=sys.stderr)
+        logger.info(f"🔗 Connector agent: {issues_found} insights for {user_id}")
         return result
 
     def run_digest_agent(self, user_id: str, llm_client) -> dict:
@@ -2042,7 +2179,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 clean = "\n".join(lines[1:-1])
             result = json.loads(clean)
         except (json.JSONDecodeError, Exception) as e:
-            print(f"⚠️ Digest agent failed: {e}", file=sys.stderr)
+            logger.error(f"⚠️ Digest agent failed: {e}")
             return {"status": "error", "message": str(e)}
 
         # Save run
@@ -2053,14 +2190,14 @@ Be specific and personal, not generic. No markdown, just JSON."""
             )
             self.conn.commit()
 
-        print(f"📰 Digest agent completed for {user_id}", file=sys.stderr)
+        logger.info(f"📰 Digest agent completed for {user_id}")
         return result
 
     def run_all_agents(self, user_id: str, llm_client, auto_fix: bool = False) -> dict:
         """Run all three agents in sequence."""
         results = {}
 
-        print(f"🤖 Running all agents for {user_id}...", file=sys.stderr)
+        logger.info(f"🤖 Running all agents for {user_id}...")
 
         # 1. Curator first (clean up)
         results["curator"] = self.run_curator_agent(user_id, llm_client, auto_fix=auto_fix)
@@ -2071,7 +2208,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
         # 3. Digest (summarize everything)
         results["digest"] = self.run_digest_agent(user_id, llm_client)
 
-        print(f"✅ All agents completed for {user_id}", file=sys.stderr)
+        logger.info(f"✅ All agents completed for {user_id}")
         return results
 
     def get_agent_history(self, user_id: str, agent_type: str = None, limit: int = 10) -> list:
@@ -2287,7 +2424,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                     """, (hook_id,))
                     self.conn.commit()
             except Exception as e:
-                print(f"⚠️ Webhook {hook_id} failed: {e}", file=sys.stderr)
+                logger.error(f"⚠️ Webhook {hook_id} failed: {e}")
                 try:
                     with self.conn.cursor() as cur2:
                         cur2.execute("""
@@ -2305,7 +2442,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             )
             t.start()
 
-        print(f"🔔 Fired {len(hooks)} webhooks for {event_type} ({user_id})", file=sys.stderr)
+        logger.info(f"🔔 Fired {len(hooks)} webhooks for {event_type} ({user_id})")
 
     # =====================================================
     # SHARED MEMORY — TEAMS
@@ -2372,6 +2509,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             """, (team_id, user_id))
             self.conn.commit()
 
+            self.cache.invalidate(f"teams:{user_id}")
             return {
                 "id": team_id,
                 "name": team["name"],
@@ -2400,6 +2538,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 self.conn.rollback()
                 raise ValueError("Already a member of this team")
 
+            self.cache.invalidate(f"teams:{user_id}")
             return {"team_id": team["id"], "team_name": team["name"], "role": "member"}
 
     def get_user_teams(self, user_id: str) -> list:
@@ -2459,7 +2598,10 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 (team_id, user_id)
             )
             self.conn.commit()
-            return cur.rowcount > 0
+            left = cur.rowcount > 0
+        if left:
+            self.cache.invalidate(f"teams:{user_id}")
+        return left
 
     def delete_team(self, user_id: str, team_id: int) -> bool:
         """Delete a team (owner only). Shared entities become personal to their creators."""
@@ -2477,6 +2619,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             cur.execute("UPDATE entities SET team_id = NULL WHERE team_id = %s", (team_id,))
             cur.execute("DELETE FROM teams WHERE id = %s", (team_id,))
             self.conn.commit()
+            self.cache.invalidate(f"teams:{user_id}")
             return True
 
     def share_entity(self, user_id: str, entity_name: str, team_id: int) -> dict:
@@ -2511,13 +2654,19 @@ Be specific and personal, not generic. No markdown, just JSON."""
             return {"entity": entity_name, "status": "personal"}
 
     def get_user_team_ids(self, user_id: str) -> list:
-        """Get list of team IDs user belongs to. Cached-friendly."""
+        """Get list of team IDs user belongs to. Cached 60s."""
+        cache_key = f"teams:{user_id}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
         self.ensure_teams_table()
         with self.conn.cursor() as cur:
             cur.execute(
                 "SELECT team_id FROM team_members WHERE user_id = %s", (user_id,)
             )
-            return [r[0] for r in cur.fetchall()]
+            result = [r[0] for r in cur.fetchall()]
+        self.cache.set(cache_key, result, ttl=60)
+        return result
 
     def search_vector_with_teams(self, user_id: str, embedding: list[float],
                                   top_k: int = 5, min_score: float = 0.3,
