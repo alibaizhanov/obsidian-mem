@@ -655,6 +655,59 @@ class CloudStore:
 
             return [entity_map[str(e["id"])] for e in entities]
 
+    def get_existing_context(self, user_id: str, max_entities: int = 20, max_facts_per: int = 5) -> str:
+        """Get compact summary of existing entities for extraction context.
+        Returns a string like:
+          - Ali Baizhanov (person): works as developer, uses Python, lives in Almaty
+          - Mengram (project): AI memory protocol, built with FastAPI
+        """
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            # Get top entities by recent activity
+            cur.execute(
+                """SELECT e.id, e.name, e.type 
+                   FROM entities e
+                   WHERE e.user_id = %s
+                   ORDER BY e.updated_at DESC NULLS LAST
+                   LIMIT %s""",
+                (user_id, max_entities)
+            )
+            entities = cur.fetchall()
+            if not entities:
+                return ""
+
+            entity_ids = [str(e["id"]) for e in entities]
+
+            # Get top facts per entity (by importance)
+            cur.execute(
+                """SELECT DISTINCT ON (entity_id, content) entity_id, content, importance
+                   FROM facts 
+                   WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE
+                   ORDER BY entity_id, content, importance DESC""",
+                (entity_ids,)
+            )
+            facts_by_entity = {}
+            for row in cur.fetchall():
+                eid = str(row["entity_id"])
+                if eid not in facts_by_entity:
+                    facts_by_entity[eid] = []
+                facts_by_entity[eid].append((row["content"], float(row["importance"] or 0.5)))
+
+            # Sort each entity's facts by importance, take top N
+            for eid in facts_by_entity:
+                facts_by_entity[eid].sort(key=lambda x: x[1], reverse=True)
+                facts_by_entity[eid] = facts_by_entity[eid][:max_facts_per]
+
+            lines = []
+            for e in entities:
+                eid = str(e["id"])
+                facts = facts_by_entity.get(eid, [])
+                if facts:
+                    fact_strs = ", ".join(f[0] for f in facts)
+                    lines.append(f"- {e['name']} ({e['type']}): {fact_strs}")
+                else:
+                    lines.append(f"- {e['name']} ({e['type']})")
+            return "\n".join(lines)
+
     def delete_entity(self, user_id: str, name: str) -> bool:
         """Delete entity and all related data."""
         with self.conn.cursor() as cur:

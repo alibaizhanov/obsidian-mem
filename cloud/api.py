@@ -503,7 +503,15 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
             try:
                 extractor = get_llm()
                 conversation = [{"role": m.role, "content": m.content} for m in req.messages]
-                extraction = extractor.extract(conversation)
+
+                # Get existing entities context for smarter extraction
+                existing_context = ""
+                try:
+                    existing_context = store.get_existing_context(user_id)
+                except Exception as e:
+                    print(f"⚠️ Context fetch failed: {e}", file=sys.stderr)
+
+                extraction = extractor.extract(conversation, existing_context=existing_context)
 
                 for entity in extraction.entities:
                     name = entity.name

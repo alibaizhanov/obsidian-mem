@@ -29,38 +29,40 @@ from typing import Optional
 from engine.extractor.llm_client import LLMClient
 
 
-EXTRACTION_PROMPT = """You are a precision knowledge extraction system. Analyze the conversation and extract IMPORTANT, LASTING knowledge.
+EXTRACTION_PROMPT = """You are a precision knowledge extraction system. Extract IMPORTANT, LASTING personal knowledge from the USER's messages.
 
 Return ONLY valid JSON without markdown. Be VERY selective — quality over quantity.
 
-CRITICAL RULES:
-- ONLY extract entities that are NAMED and SPECIFIC (real names, real projects, real technologies)
-- If user says "I" or "me" — resolve to their ACTUAL NAME if known from context, otherwise use "User"
-- DO NOT create entities for: generic concepts (e.g. "OOM error", "debugging"), temporary states, error messages, vague terms
-- DO NOT create entities for things that are just part of a fact about another entity
-- entity_type: person, project, technology, company, concept (use concept SPARINGLY — only for important recurring themes)
-- facts: short, specific, LASTING statements (preferences, roles, decisions — NOT temporary actions)
-- relations: how entities are connected
-- knowledge: solutions, code, formulas, commands with artifacts
+WHO TO EXTRACT ABOUT:
+- Extract knowledge revealed by the USER about themselves, their projects, their life
+- DO NOT extract general knowledge the assistant explained (e.g. "nginx config is at /etc/nginx" — unless user confirms they used it)
+- If assistant suggests something and user says "yes, I did that" or "that worked" — extract the user's action/result
+- Focus on: user's identity, skills, preferences, projects, decisions, workflows, relationships
 
-ENTITY NAMING RULES (VERY IMPORTANT):
-- Use EXACT casing from context: "Mengram" not "MENGRAM", "PostgreSQL" not "postgresql"
-- Use the FULL official name: "Ali Baizhanov" not "Ali", "Uzum Bank" not "uzum"
-- If the same entity appears with different casings, pick the most common/official one
-- NEVER create duplicate entities with different casing
+ENTITY RULES:
+- ONLY named, specific entities with 2+ extractable facts
+- If something is mentioned once in passing — make it a fact on the parent entity, NOT a separate entity
+  GOOD: Entity "Mengram" → fact: "uses Redis as cache"
+  BAD: Entity "Redis" → fact: "used as cache" (only 1 fact, make it a fact on the project instead)
+- entity_type: person, project, technology, company, concept
+- If user says "I"/"me"/"my" — resolve to their name if known, otherwise "User"
+{existing_context}
+ENTITY NAMING:
+- EXACT casing from context: "Mengram" not "MENGRAM", "PostgreSQL" not "postgresql"
+- FULL official name: "Ali Baizhanov" not "Ali", "Uzum Bank" not "uzum"
+- If entity already exists above — use EXACT SAME NAME (do not create duplicates)
 
-FACT ATTRIBUTION RULES (VERY IMPORTANT):
-- ONLY assign facts to the entity they DIRECTLY describe
-- If user discusses Project A (Python) and Project B (Java) in same conversation, DO NOT mix their tech stacks
-- A technology is "used by" a project ONLY if explicitly stated in context
-- If user talks about their day job (Java/Spring Boot) and a side project (Python/FastAPI), keep facts separate
-- When in doubt about which entity a fact belongs to, assign it to the person (User) not the project
+FACT RULES:
+- Normalized format: subject + verb + object, present tense, under 10 words
+  GOOD: "uses Python", "deployed on Railway", "prefers dark mode"
+  BAD: "he has been using Python for a while now", "is currently in the process of deploying"
+- ONLY facts that DIRECTLY describe the entity they're assigned to
+- Keep project facts on projects, personal facts on the person — don't mix
+- DO NOT extract: temporary actions ("asked about X"), session events ("sent a message"), assistant's explanations
 
-GOOD entities: "Ali Baizhanov", "Mengram", "Redis", "Uzum Bank", "Kubernetes"
-BAD entities: "OOM error", "User", "connection pool", "debugging session", "migration"
-
-GOOD facts: "works as backend developer", "prefers dark mode", "lives in Almaty"
-BAD facts: "asked about OOM error", "is debugging something", "sent a message"
+FACT DEDUP — check existing facts above. Do NOT re-extract facts that already exist (even if worded slightly differently).
+If user says "I use Python" and existing context already has "uses Python" → skip it.
+If user says "I switched from React to Svelte" and existing has "uses React" → extract "switched to Svelte" (this is NEW info).
 
 Response format (strict JSON, no ```):
 {{
@@ -76,13 +78,13 @@ Response format (strict JSON, no ```):
       "from": "Entity 1",
       "to": "Entity 2",
       "type": "works_at|uses|member_of|related_to|depends_on|created_by",
-      "description": "relationship description"
+      "description": "short description"
     }}
   ],
   "knowledge": [
     {{
       "entity": "Entity this knowledge belongs to",
-      "type": "solution|formula|command|insight|...",
+      "type": "solution|formula|command|insight|decision|recipe|reference",
       "title": "Short descriptive title",
       "content": "Detailed explanation",
       "artifact": "code/config/formula/command (optional, null if none)"
@@ -90,10 +92,35 @@ Response format (strict JSON, no ```):
   ]
 }}
 
+EXAMPLE:
+Input conversation:
+  User: "Я вчера задеплоил mengram на Railway, всё работает. Пришлось повозиться с pgvector"
+  Assistant: "Отлично! Какая версия PostgreSQL?"
+  User: "15-я, на Supabase хостится"
+
+Output:
+{{
+  "entities": [
+    {{"name": "Mengram", "type": "project", "facts": ["deployed on Railway", "uses pgvector extension"]}},
+    {{"name": "Supabase", "type": "technology", "facts": ["hosts PostgreSQL 15 for Mengram"]}}
+  ],
+  "relations": [
+    {{"from": "Mengram", "to": "Railway", "type": "depends_on", "description": "deployed on"}},
+    {{"from": "Mengram", "to": "Supabase", "type": "depends_on", "description": "database hosting"}}
+  ],
+  "knowledge": []
+}}
+
 CONVERSATION:
 {conversation}
 
 Extract knowledge (return ONLY JSON):"""
+
+
+EXISTING_CONTEXT_BLOCK = """
+EXISTING ENTITIES FOR THIS USER (use same names, avoid duplicate facts):
+{context}
+"""
 
 
 @dataclass
@@ -155,9 +182,19 @@ class ConversationExtractor:
     def __init__(self, llm_client: LLMClient):
         self.llm = llm_client
 
-    def extract(self, conversation: list[dict]) -> ExtractionResult:
+    def extract(self, conversation: list[dict], existing_context: str = "") -> ExtractionResult:
         conv_text = self._format_conversation(conversation)
-        prompt = EXTRACTION_PROMPT.format(conversation=conv_text)
+
+        # Build context block
+        if existing_context:
+            context_block = EXISTING_CONTEXT_BLOCK.format(context=existing_context)
+        else:
+            context_block = ""
+
+        prompt = EXTRACTION_PROMPT.format(
+            conversation=conv_text,
+            existing_context=context_block
+        )
         raw_response = self.llm.complete(prompt)
         return self._parse_response(raw_response)
 
