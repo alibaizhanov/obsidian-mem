@@ -67,7 +67,7 @@ def create_cloud_api() -> FastAPI:
     app = FastAPI(
         title="Mengram Cloud API",
         description="Memory layer for AI apps — hosted",
-        version="1.7.0",
+        version="2.0.0",
     )
 
     app.add_middleware(
@@ -487,7 +487,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
 
     @app.get("/v1/health")
     async def health():
-        return {"status": "ok", "version": "1.7.0"}
+        return {"status": "ok", "version": "2.0.0"}
 
     # ---- Protected endpoints ----
 
@@ -849,6 +849,58 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     async def get_insights(user_id: str = Depends(auth)):
         """Get formatted AI insights for dashboard."""
         return store.get_insights(user_id)
+
+    # =====================================================
+    # MEMORY AGENTS v2.0
+    # =====================================================
+
+    @app.post("/v1/agents/run")
+    async def run_agents(
+        agent: str = "all",
+        auto_fix: bool = False,
+        user_id: str = Depends(auth)
+    ):
+        """Run memory agents. 
+        ?agent=curator|connector|digest|all
+        ?auto_fix=true — auto-archive low quality and stale facts (curator only)
+        """
+        llm = get_llm()
+        extractor = Extractor(llm_client=llm, embedder=get_embedder())
+
+        if agent == "all":
+            result = store.run_all_agents(user_id, extractor.llm, auto_fix=auto_fix)
+            return {"status": "completed", "agents": result}
+        elif agent == "curator":
+            result = store.run_curator_agent(user_id, extractor.llm, auto_fix=auto_fix)
+            return {"status": "completed", "agent": "curator", "result": result}
+        elif agent == "connector":
+            result = store.run_connector_agent(user_id, extractor.llm)
+            return {"status": "completed", "agent": "connector", "result": result}
+        elif agent == "digest":
+            result = store.run_digest_agent(user_id, extractor.llm)
+            return {"status": "completed", "agent": "digest", "result": result}
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown agent: {agent}. Use: curator, connector, digest, all")
+
+    @app.get("/v1/agents/history")
+    async def agent_history(
+        agent: str = None,
+        limit: int = 10,
+        user_id: str = Depends(auth)
+    ):
+        """Get agent run history. Optional ?agent=curator|connector|digest"""
+        runs = store.get_agent_history(user_id, agent_type=agent, limit=limit)
+        return {"runs": runs, "total": len(runs)}
+
+    @app.get("/v1/agents/status")
+    async def agent_status(user_id: str = Depends(auth)):
+        """Check which agents are due to run."""
+        due = store.should_run_agents(user_id)
+        history = store.get_agent_history(user_id, limit=3)
+        return {
+            "due": due,
+            "last_runs": history
+        }
 
     @app.post("/v1/archive_fact")
     async def archive_fact(

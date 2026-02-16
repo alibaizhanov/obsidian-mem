@@ -1694,3 +1694,416 @@ Return ONLY JSON (no markdown):
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 })
             return {"feed": items, "total": len(items)}
+
+    # =====================================================
+    # MEMORY AGENTS v2.0
+    # =====================================================
+
+    AGENT_CURATOR_PROMPT = """You are a Memory Curator Agent. Analyze this user's memory for quality issues.
+
+ALL FACTS (grouped by entity):
+{facts_text}
+
+Find these issues:
+1. CONTRADICTIONS — facts that conflict with each other (e.g., "lives in Almaty" vs "relocated to USA")
+2. STALE FACTS — facts that are likely outdated based on context (old job titles, old plans, completed tasks)
+3. LOW QUALITY — vague, trivial, or non-useful facts (e.g., "asked a question", "mentioned something")
+4. DUPLICATES — facts that say the same thing differently across entities
+
+Return JSON:
+{{
+  "contradictions": [
+    {{"fact_a": "...", "fact_b": "...", "entity_a": "...", "entity_b": "...", "suggestion": "keep A / keep B / ask user"}}
+  ],
+  "stale": [
+    {{"fact": "...", "entity": "...", "reason": "why it seems outdated", "confidence": 0.0-1.0}}
+  ],
+  "low_quality": [
+    {{"fact": "...", "entity": "...", "reason": "why it's low quality"}}
+  ],
+  "duplicates": [
+    {{"facts": ["fact1", "fact2"], "entities": ["entity1", "entity2"], "keep": "best version"}}
+  ],
+  "health_score": 0.0-1.0,
+  "summary": "One paragraph overview of memory health"
+}}
+
+Be thorough. Real problems only, not nitpicking. No markdown, just JSON."""
+
+    AGENT_CONNECTOR_PROMPT = """You are a Memory Connector Agent. Your job is to find NON-OBVIOUS connections and patterns in this user's memory that they might not see themselves.
+
+ALL FACTS (grouped by entity):
+{facts_text}
+
+EXISTING REFLECTIONS:
+{reflections_text}
+
+Find:
+1. HIDDEN CONNECTIONS — entities that are related in ways not explicitly stated
+2. BEHAVIORAL PATTERNS — recurring decision-making or work patterns
+3. SKILL CLUSTERS — groups of related skills/knowledge that form expertise areas
+4. STRATEGIC INSIGHTS — observations about trajectory, growth areas, blind spots
+5. ACTIONABLE SUGGESTIONS — concrete things the user could do based on their memory
+
+Return JSON:
+{{
+  "connections": [
+    {{"entities": ["A", "B"], "connection": "how they're related", "strength": 0.0-1.0, "insight": "why this matters"}}
+  ],
+  "patterns": [
+    {{"pattern": "description", "evidence": ["fact1", "fact2", "..."], "implication": "what this means"}}
+  ],
+  "skill_clusters": [
+    {{"name": "cluster name", "skills": ["skill1", "skill2"], "level": "beginner/intermediate/expert", "growth_direction": "where this is heading"}}
+  ],
+  "strategic_insights": [
+    {{"insight": "observation", "confidence": 0.0-1.0, "category": "career/technical/personal/project"}}
+  ],
+  "suggestions": [
+    {{"action": "what to do", "reason": "why", "priority": "high/medium/low"}}
+  ]
+}}
+
+Be insightful, not generic. Find things the user wouldn't notice themselves. No markdown, just JSON."""
+
+    AGENT_DIGEST_PROMPT = """You are a Memory Digest Agent. Create a concise activity digest.
+
+RECENT FACTS (last 7 days):
+{recent_facts}
+
+ALL-TIME STATS:
+- Total entities: {total_entities}
+- Total facts: {total_facts}
+- Memory health score: {health_score}
+
+RECENT AGENT FINDINGS:
+{agent_findings}
+
+Create a digest:
+{{
+  "headline": "One-line summary of this week's memory activity",
+  "highlights": ["3-5 key things that happened in memory this week"],
+  "trends": ["2-3 trends you notice"],
+  "memory_grew": {{"entities_added": N, "facts_added": N, "facts_archived": N}},
+  "focus_areas": ["what the user has been thinking about most"],
+  "recommendation": "One actionable recommendation for the user"
+}}
+
+Be specific and personal, not generic. No markdown, just JSON."""
+
+    def ensure_agents_table(self):
+        """Create agent_runs table if not exists."""
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS agent_runs (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL,
+                    agent_type VARCHAR(50) NOT NULL,
+                    status VARCHAR(20) DEFAULT 'completed',
+                    result JSONB,
+                    issues_found INTEGER DEFAULT 0,
+                    actions_taken INTEGER DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_agent_runs_user 
+                ON agent_runs(user_id, agent_type, created_at DESC)
+            """)
+            self.conn.commit()
+
+    def run_curator_agent(self, user_id: str, llm_client, auto_fix: bool = False) -> dict:
+        """Curator Agent — finds contradictions, stale facts, duplicates, low quality."""
+        self.ensure_agents_table()
+
+        entities = self.get_all_entities_full(user_id)
+        if not entities:
+            return {"status": "empty", "message": "No memories to curate"}
+
+        facts_lines = []
+        total_facts = 0
+        for e in entities:
+            if not e["facts"]:
+                continue
+            total_facts += len(e["facts"])
+            facts_str = ", ".join(e["facts"][:20])
+            facts_lines.append(f"- {e['entity']} ({e['type']}): {facts_str}")
+        facts_text = "\n".join(facts_lines)
+
+        prompt = self.AGENT_CURATOR_PROMPT.format(facts_text=facts_text)
+
+        try:
+            response = llm_client.complete(prompt)
+            clean = response.strip()
+            if clean.startswith("```"):
+                lines = clean.split("\n")
+                clean = "\n".join(lines[1:-1])
+            result = json.loads(clean)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ Curator agent failed: {e}", file=sys.stderr)
+            return {"status": "error", "message": str(e)}
+
+        issues_found = (
+            len(result.get("contradictions", [])) +
+            len(result.get("stale", [])) +
+            len(result.get("low_quality", [])) +
+            len(result.get("duplicates", []))
+        )
+
+        actions_taken = 0
+        # Auto-fix: archive low-quality facts with high confidence
+        if auto_fix:
+            for item in result.get("low_quality", []):
+                entity_name = item.get("entity", "")
+                fact = item.get("fact", "")
+                entity_id = self.get_entity_id(user_id, entity_name)
+                if entity_id and fact:
+                    with self.conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE facts SET archived = TRUE, superseded_by = 'curator: low quality' WHERE entity_id = %s AND content = %s AND archived = FALSE",
+                            (entity_id, fact)
+                        )
+                        if cur.rowcount > 0:
+                            actions_taken += 1
+
+            # Auto-fix: archive stale facts with high confidence
+            for item in result.get("stale", []):
+                if item.get("confidence", 0) >= 0.85:
+                    entity_name = item.get("entity", "")
+                    fact = item.get("fact", "")
+                    entity_id = self.get_entity_id(user_id, entity_name)
+                    if entity_id and fact:
+                        with self.conn.cursor() as cur:
+                            cur.execute(
+                                "UPDATE facts SET archived = TRUE, superseded_by = 'curator: stale' WHERE entity_id = %s AND content = %s AND archived = FALSE",
+                                (entity_id, fact)
+                            )
+                            if cur.rowcount > 0:
+                                actions_taken += 1
+
+            self.conn.commit()
+
+        # Save run
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO agent_runs (user_id, agent_type, result, issues_found, actions_taken) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, "curator", json.dumps(result), issues_found, actions_taken)
+            )
+            self.conn.commit()
+
+        result["_meta"] = {
+            "issues_found": issues_found,
+            "actions_taken": actions_taken,
+            "total_facts_scanned": total_facts,
+            "auto_fix": auto_fix
+        }
+
+        print(f"🧹 Curator agent: {issues_found} issues, {actions_taken} auto-fixed for {user_id}", file=sys.stderr)
+        return result
+
+    def run_connector_agent(self, user_id: str, llm_client) -> dict:
+        """Connector Agent — finds hidden connections, patterns, insights."""
+        self.ensure_agents_table()
+
+        entities = self.get_all_entities_full(user_id)
+        if not entities:
+            return {"status": "empty", "message": "No memories to analyze"}
+
+        facts_lines = []
+        for e in entities:
+            if not e["facts"]:
+                continue
+            facts_str = ", ".join(e["facts"][:15])
+            facts_lines.append(f"- {e['entity']} ({e['type']}): {facts_str}")
+        facts_text = "\n".join(facts_lines)
+
+        # Get existing reflections
+        prev = self.get_reflections(user_id)
+        reflections_text = "(none)"
+        if prev:
+            r_lines = [f"- [{r['scope']}] {r['title']}: {r['content'][:150]}" for r in prev[:8]]
+            reflections_text = "\n".join(r_lines)
+
+        prompt = self.AGENT_CONNECTOR_PROMPT.format(
+            facts_text=facts_text,
+            reflections_text=reflections_text
+        )
+
+        try:
+            response = llm_client.complete(prompt)
+            clean = response.strip()
+            if clean.startswith("```"):
+                lines = clean.split("\n")
+                clean = "\n".join(lines[1:-1])
+            result = json.loads(clean)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ Connector agent failed: {e}", file=sys.stderr)
+            return {"status": "error", "message": str(e)}
+
+        issues_found = (
+            len(result.get("connections", [])) +
+            len(result.get("patterns", [])) +
+            len(result.get("strategic_insights", [])) +
+            len(result.get("suggestions", []))
+        )
+
+        # Save run
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO agent_runs (user_id, agent_type, result, issues_found) VALUES (%s, %s, %s, %s)",
+                (user_id, "connector", json.dumps(result), issues_found)
+            )
+            self.conn.commit()
+
+        print(f"🔗 Connector agent: {issues_found} insights for {user_id}", file=sys.stderr)
+        return result
+
+    def run_digest_agent(self, user_id: str, llm_client) -> dict:
+        """Digest Agent — generates weekly activity summary."""
+        self.ensure_agents_table()
+
+        # Recent facts (last 7 days)
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("""
+                SELECT f.content, e.name as entity_name, f.created_at
+                FROM facts f
+                JOIN entities e ON e.id = f.entity_id
+                WHERE e.user_id = %s AND f.created_at > NOW() - INTERVAL '7 days'
+                AND f.archived = FALSE
+                ORDER BY f.created_at DESC LIMIT 50
+            """, (user_id,))
+            recent = cur.fetchall()
+
+        recent_facts = "(no recent activity)"
+        if recent:
+            lines = [f"- [{r['entity_name']}] {r['content']} ({r['created_at'].strftime('%m/%d')})" for r in recent]
+            recent_facts = "\n".join(lines)
+
+        # Stats
+        stats = self.get_stats(user_id)
+
+        # Last curator/connector results
+        agent_findings = "(none)"
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("""
+                SELECT agent_type, result, issues_found, created_at
+                FROM agent_runs
+                WHERE user_id = %s AND created_at > NOW() - INTERVAL '7 days'
+                ORDER BY created_at DESC LIMIT 3
+            """, (user_id,))
+            runs = cur.fetchall()
+            if runs:
+                lines = []
+                for r in runs:
+                    res = r["result"] if isinstance(r["result"], dict) else json.loads(r["result"])
+                    summary = res.get("summary", res.get("headline", f"{r['issues_found']} findings"))
+                    lines.append(f"- {r['agent_type']}: {summary}")
+                agent_findings = "\n".join(lines)
+
+        # Get health score from last curator run
+        health_score = "N/A"
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute("""
+                SELECT result FROM agent_runs
+                WHERE user_id = %s AND agent_type = 'curator'
+                ORDER BY created_at DESC LIMIT 1
+            """, (user_id,))
+            row = cur.fetchone()
+            if row:
+                res = row["result"] if isinstance(row["result"], dict) else json.loads(row["result"])
+                health_score = str(res.get("health_score", "N/A"))
+
+        prompt = self.AGENT_DIGEST_PROMPT.format(
+            recent_facts=recent_facts,
+            total_entities=stats.get("total_entities", 0),
+            total_facts=stats.get("total_facts", 0),
+            health_score=health_score,
+            agent_findings=agent_findings
+        )
+
+        try:
+            response = llm_client.complete(prompt)
+            clean = response.strip()
+            if clean.startswith("```"):
+                lines = clean.split("\n")
+                clean = "\n".join(lines[1:-1])
+            result = json.loads(clean)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"⚠️ Digest agent failed: {e}", file=sys.stderr)
+            return {"status": "error", "message": str(e)}
+
+        # Save run
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO agent_runs (user_id, agent_type, result, issues_found) VALUES (%s, %s, %s, %s)",
+                (user_id, "digest", json.dumps(result), len(result.get("highlights", [])))
+            )
+            self.conn.commit()
+
+        print(f"📰 Digest agent completed for {user_id}", file=sys.stderr)
+        return result
+
+    def run_all_agents(self, user_id: str, llm_client, auto_fix: bool = False) -> dict:
+        """Run all three agents in sequence."""
+        results = {}
+
+        print(f"🤖 Running all agents for {user_id}...", file=sys.stderr)
+
+        # 1. Curator first (clean up)
+        results["curator"] = self.run_curator_agent(user_id, llm_client, auto_fix=auto_fix)
+
+        # 2. Connector (find patterns in clean data)
+        results["connector"] = self.run_connector_agent(user_id, llm_client)
+
+        # 3. Digest (summarize everything)
+        results["digest"] = self.run_digest_agent(user_id, llm_client)
+
+        print(f"✅ All agents completed for {user_id}", file=sys.stderr)
+        return results
+
+    def get_agent_history(self, user_id: str, agent_type: str = None, limit: int = 10) -> list:
+        """Get history of agent runs."""
+        self.ensure_agents_table()
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            if agent_type:
+                cur.execute("""
+                    SELECT agent_type, status, result, issues_found, actions_taken, created_at
+                    FROM agent_runs WHERE user_id = %s AND agent_type = %s
+                    ORDER BY created_at DESC LIMIT %s
+                """, (user_id, agent_type, limit))
+            else:
+                cur.execute("""
+                    SELECT agent_type, status, result, issues_found, actions_taken, created_at
+                    FROM agent_runs WHERE user_id = %s
+                    ORDER BY created_at DESC LIMIT %s
+                """, (user_id, limit))
+            rows = cur.fetchall()
+            return [{
+                "agent_type": r["agent_type"],
+                "status": r["status"],
+                "result": r["result"] if isinstance(r["result"], dict) else json.loads(r["result"]) if r["result"] else {},
+                "issues_found": r["issues_found"],
+                "actions_taken": r["actions_taken"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None
+            } for r in rows]
+
+    def should_run_agents(self, user_id: str) -> dict:
+        """Check if agents should run. Returns which agents are due."""
+        self.ensure_agents_table()
+        due = {}
+        with self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            for agent in ["curator", "connector", "digest"]:
+                cur.execute("""
+                    SELECT created_at FROM agent_runs
+                    WHERE user_id = %s AND agent_type = %s
+                    ORDER BY created_at DESC LIMIT 1
+                """, (user_id, agent))
+                row = cur.fetchone()
+                if not row:
+                    due[agent] = True
+                else:
+                    hours_since = (datetime.datetime.now(datetime.timezone.utc) - row["created_at"]).total_seconds() / 3600
+                    # Curator: every 24h, Connector: every 48h, Digest: every 7 days
+                    thresholds = {"curator": 24, "connector": 48, "digest": 168}
+                    due[agent] = hours_since >= thresholds.get(agent, 24)
+        return due

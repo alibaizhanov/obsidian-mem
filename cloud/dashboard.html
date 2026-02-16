@@ -220,12 +220,13 @@
         <div class="sidebar-logo">🧠 Mengram</div>
         <div class="sidebar-nav">
             <div class="nav-item active" onclick="switchTab('feed')"><span class="icon">📋</span> Memory Feed</div>
+            <div class="nav-item" onclick="switchTab('agents')"><span class="icon">🤖</span> Agents</div>
             <div class="nav-item" onclick="switchTab('insights')"><span class="icon">🧠</span> AI Insights</div>
             <div class="nav-item" onclick="switchTab('graph')"><span class="icon">🕸️</span> Knowledge Graph</div>
             <div class="nav-item" onclick="switchTab('entities')"><span class="icon">📦</span> Entities</div>
             <div class="nav-item" onclick="switchTab('settings')"><span class="icon">⚙️</span> Settings</div>
         </div>
-        <div class="sidebar-footer"><a href="/">← Home</a> · <a href="/extension/download">Extension</a></div>
+        <div class="sidebar-footer"><a href="/">← Home</a></div>
     </div>
 
     <div class="main">
@@ -242,6 +243,44 @@
                 <div class="search-bar"><span>🔍</span><input id="search-input" placeholder="Semantic search..." onkeydown="if(event.key==='Enter')doSearch()"><div class="search-dropdown" id="search-dd"></div></div>
             </div>
             <div id="feed-box" class="loading">Loading memories...</div>
+        </div>
+
+        <div class="tab-content" id="tab-agents">
+            <div class="page-header">
+                <h2>🤖 Memory Agents</h2>
+                <div style="display:flex;gap:8px;">
+                    <button onclick="runAgent('curator')" style="background:var(--green);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">🧹 Curator</button>
+                    <button onclick="runAgent('connector')" style="background:var(--blue);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">🔗 Connector</button>
+                    <button onclick="runAgent('digest')" style="background:var(--orange);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">📰 Digest</button>
+                    <button onclick="runAgent('all')" style="background:var(--accent);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">🚀 Run All</button>
+                </div>
+            </div>
+            <div id="agents-box">
+                <div class="agents-intro" style="text-align:center;padding:40px 20px;color:var(--text-2);">
+                    <div style="font-size:48px;margin-bottom:16px;">🤖</div>
+                    <h3 style="color:var(--text-1);margin-bottom:8px;">Memory Agents</h3>
+                    <p>Autonomous agents that clean, analyze, and generate insights from your memory.</p>
+                    <div style="display:flex;gap:20px;justify-content:center;margin-top:24px;flex-wrap:wrap;">
+                        <div style="background:var(--card);border-radius:12px;padding:16px;width:180px;text-align:left;">
+                            <div style="font-size:24px;margin-bottom:8px;">🧹</div>
+                            <strong style="color:var(--green);">Curator</strong>
+                            <p style="font-size:12px;margin-top:4px;">Finds contradictions, stale facts, duplicates. Auto-cleans memory.</p>
+                        </div>
+                        <div style="background:var(--card);border-radius:12px;padding:16px;width:180px;text-align:left;">
+                            <div style="font-size:24px;margin-bottom:8px;">🔗</div>
+                            <strong style="color:var(--blue);">Connector</strong>
+                            <p style="font-size:12px;margin-top:4px;">Discovers hidden patterns, skill clusters, strategic insights.</p>
+                        </div>
+                        <div style="background:var(--card);border-radius:12px;padding:16px;width:180px;text-align:left;">
+                            <div style="font-size:24px;margin-bottom:8px;">📰</div>
+                            <strong style="color:var(--orange);">Digest</strong>
+                            <p style="font-size:12px;margin-top:4px;">Weekly summary of memory activity, trends, recommendations.</p>
+                        </div>
+                    </div>
+                </div>
+                <div id="agent-results" style="display:none;"></div>
+                <div id="agent-history" style="margin-top:20px;"></div>
+            </div>
         </div>
 
         <div class="tab-content" id="tab-insights">
@@ -338,11 +377,138 @@ function switchTab(t) {
     if(t==='graph') loadGraph();
     if(t==='entities') loadEntities();
     if(t==='insights') loadInsights();
+    if(t==='agents') loadAgentHistory();
 }
 
 async function loadAll() { loadStats(); loadFeed(); }
 
-// ---- Insights ----
+// ---- Agents ----
+let agentRunning = false;
+
+async function runAgent(type) {
+    if (agentRunning) return;
+    agentRunning = true;
+    const resultsBox = document.getElementById('agent-results');
+    resultsBox.style.display = 'block';
+    resultsBox.innerHTML = `<div class="loading" style="text-align:center;padding:30px;color:var(--text-2);"><div style="font-size:32px;margin-bottom:12px;">⏳</div>Running ${type === 'all' ? 'all agents' : type + ' agent'}... (10-30 sec)</div>`;
+
+    try {
+        const autoFix = type === 'curator' || type === 'all' ? '&auto_fix=true' : '';
+        const res = await fetch(`${API}/v1/agents/run?agent=${type}${autoFix}`, {method:'POST', headers:H()});
+        const data = await res.json();
+        renderAgentResults(type, data);
+        loadAgentHistory();
+    } catch(e) {
+        resultsBox.innerHTML = `<div style="color:var(--red);padding:20px;">Error: ${e.message}</div>`;
+    }
+    agentRunning = false;
+}
+
+function renderAgentResults(type, data) {
+    const box = document.getElementById('agent-results');
+    box.style.display = 'block';
+
+    if (type === 'all' && data.agents) {
+        let html = '<h3 style="margin-bottom:16px;">🚀 All Agents Results</h3>';
+        html += renderCuratorResult(data.agents.curator);
+        html += renderConnectorResult(data.agents.connector);
+        html += renderDigestResult(data.agents.digest);
+        box.innerHTML = html;
+    } else if (type === 'curator') {
+        box.innerHTML = '<h3 style="margin-bottom:16px;">🧹 Curator Results</h3>' + renderCuratorResult(data.result);
+    } else if (type === 'connector') {
+        box.innerHTML = '<h3 style="margin-bottom:16px;">🔗 Connector Results</h3>' + renderConnectorResult(data.result);
+    } else if (type === 'digest') {
+        box.innerHTML = '<h3 style="margin-bottom:16px;">📰 Digest</h3>' + renderDigestResult(data.result);
+    }
+}
+
+function renderCuratorResult(r) {
+    if (!r || r.status === 'error') return '<div style="color:var(--red)">Curator failed</div>';
+    const meta = r._meta || {};
+    let html = `<div style="background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid var(--green);">`;
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">`;
+    html += `<strong style="color:var(--green);">🧹 Curator</strong>`;
+    html += `<span style="font-size:12px;color:var(--text-2);">Health: <strong style="color:${(r.health_score||0)>0.7?'var(--green)':'var(--orange)'}">${Math.round((r.health_score||0)*100)}%</strong></span>`;
+    html += `</div>`;
+    if (r.summary) html += `<p style="color:var(--text-2);font-size:13px;margin-bottom:12px;">${r.summary}</p>`;
+    if (r.contradictions?.length) {
+        html += `<div style="margin-bottom:8px;"><strong style="color:var(--red);font-size:12px;">⚠️ Contradictions (${r.contradictions.length})</strong>`;
+        r.contradictions.forEach(c => {
+            html += `<div style="font-size:12px;padding:6px 10px;margin:4px 0;background:rgba(255,50,50,0.1);border-radius:6px;">"${c.fact_a}" vs "${c.fact_b}" — ${c.suggestion}</div>`;
+        });
+        html += `</div>`;
+    }
+    if (r.stale?.length) html += `<div style="font-size:12px;color:var(--orange);margin-top:4px;">📦 ${r.stale.length} stale facts found</div>`;
+    if (r.low_quality?.length) html += `<div style="font-size:12px;color:var(--text-2);margin-top:4px;">🗑️ ${r.low_quality.length} low quality facts</div>`;
+    if (meta.actions_taken) html += `<div style="font-size:12px;color:var(--green);margin-top:4px;">✅ Auto-fixed: ${meta.actions_taken} facts archived</div>`;
+    html += `</div>`;
+    return html;
+}
+
+function renderConnectorResult(r) {
+    if (!r || r.status === 'error') return '<div style="color:var(--red)">Connector failed</div>';
+    let html = `<div style="background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid var(--blue);">`;
+    html += `<strong style="color:var(--blue);">🔗 Connector</strong>`;
+    if (r.connections?.length) {
+        html += `<div style="margin-top:10px;"><strong style="font-size:12px;">Hidden Connections</strong>`;
+        r.connections.forEach(c => {
+            html += `<div style="font-size:12px;padding:6px 10px;margin:4px 0;background:rgba(100,100,255,0.1);border-radius:6px;"><strong>${c.entities?.join(' ↔ ')}</strong>: ${c.insight}</div>`;
+        });
+        html += `</div>`;
+    }
+    if (r.patterns?.length) {
+        html += `<div style="margin-top:10px;"><strong style="font-size:12px;">Behavioral Patterns</strong>`;
+        r.patterns.forEach(p => {
+            html += `<div style="font-size:12px;padding:6px 10px;margin:4px 0;background:rgba(100,200,100,0.1);border-radius:6px;">${p.pattern} — <em>${p.implication}</em></div>`;
+        });
+        html += `</div>`;
+    }
+    if (r.suggestions?.length) {
+        html += `<div style="margin-top:10px;"><strong style="font-size:12px;">💡 Suggestions</strong>`;
+        r.suggestions.forEach(s => {
+            const pc = s.priority === 'high' ? 'var(--red)' : s.priority === 'medium' ? 'var(--orange)' : 'var(--text-2)';
+            html += `<div style="font-size:12px;padding:6px 10px;margin:4px 0;background:rgba(255,200,50,0.1);border-radius:6px;"><span style="color:${pc};">[${s.priority}]</span> ${s.action}</div>`;
+        });
+        html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+}
+
+function renderDigestResult(r) {
+    if (!r || r.status === 'error') return '<div style="color:var(--red)">Digest failed</div>';
+    let html = `<div style="background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid var(--orange);">`;
+    html += `<strong style="color:var(--orange);">📰 Weekly Digest</strong>`;
+    if (r.headline) html += `<p style="font-size:15px;font-weight:600;color:var(--text-1);margin:8px 0;">${r.headline}</p>`;
+    if (r.highlights?.length) {
+        html += `<ul style="font-size:13px;color:var(--text-2);padding-left:20px;margin:8px 0;">`;
+        r.highlights.forEach(h => { html += `<li style="margin:4px 0;">${h}</li>`; });
+        html += `</ul>`;
+    }
+    if (r.recommendation) html += `<div style="font-size:13px;padding:10px;margin-top:8px;background:rgba(130,80,255,0.1);border-radius:8px;color:var(--accent);">💡 ${r.recommendation}</div>`;
+    html += `</div>`;
+    return html;
+}
+
+async function loadAgentHistory() {
+    const box = document.getElementById('agent-history');
+    try {
+        const d = await (await fetch(`${API}/v1/agents/history?limit=5`, {headers:H()})).json();
+        if (!d.runs?.length) { box.innerHTML = '<p style="color:var(--text-2);text-align:center;font-size:13px;">No agent runs yet. Click a button above to start.</p>'; return; }
+        let html = '<h4 style="margin-bottom:8px;color:var(--text-2);font-size:13px;">Recent Runs</h4>';
+        d.runs.forEach(r => {
+            const icons = {curator:'🧹',connector:'🔗',digest:'📰'};
+            const time = new Date(r.created_at).toLocaleString();
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--card);border-radius:8px;margin-bottom:4px;font-size:12px;">`;
+            html += `<span>${icons[r.agent_type]||'🤖'} <strong>${r.agent_type}</strong></span>`;
+            html += `<span style="color:var(--text-2);">${r.issues_found} findings${r.actions_taken ? `, ${r.actions_taken} fixed` : ''}</span>`;
+            html += `<span style="color:var(--text-2);">${time}</span>`;
+            html += `</div>`;
+        });
+        box.innerHTML = html;
+    } catch(e) { box.innerHTML = ''; }
+}
 async function loadInsights() {
     const box = document.getElementById('insights-box');
     try {
