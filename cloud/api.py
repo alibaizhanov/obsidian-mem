@@ -49,14 +49,23 @@ class Message(BaseModel):
 class AddRequest(BaseModel):
     messages: list[Message]
     user_id: str = "default"
+    agent_id: str = None
+    run_id: str = None
+    app_id: str = None
 
 class AddTextRequest(BaseModel):
     text: str
     user_id: str = "default"
+    agent_id: str = None
+    run_id: str = None
+    app_id: str = None
 
 class SearchRequest(BaseModel):
     query: str
     user_id: str = "default"
+    agent_id: str = None
+    run_id: str = None
+    app_id: str = None
     limit: int = 5
 
 class SignupRequest(BaseModel):
@@ -608,11 +617,22 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     async def add(req: AddRequest, user_id: str = Depends(auth)):
         """
         Add memories from conversation.
-        Returns immediately, processes in background.
+        Returns immediately with job_id, processes in background.
         """
         import threading
 
+        job_id = store.create_job(user_id, "add")
+        # Build metadata from categories
+        metadata = {}
+        if req.agent_id:
+            metadata["agent_id"] = req.agent_id
+        if req.run_id:
+            metadata["run_id"] = req.run_id
+        if req.app_id:
+            metadata["app_id"] = req.app_id
+
         def process_in_background():
+            created = []
             try:
                 extractor = get_llm()
                 conversation = [{"role": m.role, "content": m.content} for m in req.messages]
@@ -683,7 +703,9 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                         facts=entity.facts,
                         relations=entity_relations,
                         knowledge=entity_knowledge,
+                        metadata=metadata if metadata else None,
                     )
+                    created.append(name)
 
                     # Batch embeddings — one API call instead of N
                     embedder = get_embedder()
@@ -704,24 +726,35 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
 
                 store.log_usage(user_id, "add")
                 logger.info(f"✅ Background add complete for {user_id}")
+                store.complete_job(job_id, {"created": created, "count": len(created)})
 
                 # Auto-trigger reflection if needed
                 try:
                     if store.should_reflect(user_id):
-                        logger.info(f"🧠 Auto-reflection triggered for {user_id}")
+                        logger.info(f"✨ Auto-reflection triggered for {user_id}")
                         extractor2 = get_llm()
                         store.generate_reflections(user_id, extractor2.llm)
                 except Exception as e:
                     logger.error(f"⚠️ Auto-reflection failed: {e}")
             except Exception as e:
                 logger.error(f"❌ Background add failed: {e}")
+                store.fail_job(job_id, str(e))
 
         threading.Thread(target=process_in_background, daemon=True).start()
 
         return {
             "status": "accepted",
             "message": "Processing in background. Memories will appear shortly.",
+            "job_id": job_id,
         }
+
+    @app.get("/v1/jobs/{job_id}", tags=["System"])
+    async def job_status(job_id: str, user_id: str = Depends(auth)):
+        """Check status of a background job."""
+        job = store.get_job(job_id, user_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return job
 
     @app.post("/v1/search", tags=["Search"])
     async def search(req: SearchRequest, user_id: str = Depends(auth)):

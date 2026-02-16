@@ -1,0 +1,16 @@
+{
+  "name": "mengram-ai",
+  "version": "2.2.0",
+  "description": "AI Memory Layer with Autonomous Agents — JavaScript SDK",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alibaizhanov/mengram"
+  },
+  "homepage": "https://mengram.io",
+  "keywords": ["ai", "memory", "llm", "agents", "knowledge-graph", "mcp", "mengram"],
+  "author": "Ali Baizhanov",
+  "files": ["index.js", "index.d.ts", "README.md"]
+}

@@ -105,6 +105,8 @@ class CloudStore:
             raise ImportError("pip install psycopg2-binary")
         self.database_url = database_url
         self.cache = TTLCache(default_ttl=30)
+        self._jobs = {}  # job_id -> {status, result, error, created_at}
+        self._jobs_lock = threading.Lock()
 
         # Connection pool
         try:
@@ -269,6 +271,73 @@ class CloudStore:
                 ON knowledge (user_id) WHERE user_id IS NOT NULL
             """)
         logger.info("✅ Migration complete (v1.7: reflection system)")
+
+        # --- v2.2 Memory categories ---
+        with self._cursor() as cur:
+            cur.execute("""
+                ALTER TABLE entities ADD COLUMN IF NOT EXISTS metadata 
+                JSONB DEFAULT '{}'
+            """)
+            # Index for filtering by agent_id, app_id
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_entities_metadata 
+                ON entities USING gin(metadata)
+            """)
+        logger.info("✅ Migration complete (v2.2: memory categories)")
+
+    # ---- Job tracking (async mode) ----
+
+    def create_job(self, user_id: str, job_type: str = "add") -> str:
+        """Create a background job, return job_id."""
+        job_id = f"job-{secrets.token_urlsafe(12)}"
+        with self._jobs_lock:
+            self._jobs[job_id] = {
+                "status": "processing",
+                "user_id": user_id,
+                "type": job_type,
+                "result": None,
+                "error": None,
+                "created_at": time.time(),
+            }
+        # Cleanup old jobs (>1h)
+        self._cleanup_jobs()
+        return job_id
+
+    def complete_job(self, job_id: str, result: dict = None):
+        """Mark job as completed."""
+        with self._jobs_lock:
+            if job_id in self._jobs:
+                self._jobs[job_id]["status"] = "completed"
+                self._jobs[job_id]["result"] = result
+
+    def fail_job(self, job_id: str, error: str):
+        """Mark job as failed."""
+        with self._jobs_lock:
+            if job_id in self._jobs:
+                self._jobs[job_id]["status"] = "failed"
+                self._jobs[job_id]["error"] = error
+
+    def get_job(self, job_id: str, user_id: str) -> Optional[dict]:
+        """Get job status (only if owned by user)."""
+        with self._jobs_lock:
+            job = self._jobs.get(job_id)
+            if job and job["user_id"] == user_id:
+                return {
+                    "job_id": job_id,
+                    "status": job["status"],
+                    "type": job["type"],
+                    "result": job["result"],
+                    "error": job["error"],
+                }
+            return None
+
+    def _cleanup_jobs(self):
+        """Remove jobs older than 1 hour."""
+        cutoff = time.time() - 3600
+        with self._jobs_lock:
+            expired = [k for k, v in self._jobs.items() if v["created_at"] < cutoff]
+            for k in expired:
+                del self._jobs[k]
 
     def close(self):
         if self._pool:
@@ -572,7 +641,8 @@ class CloudStore:
     def save_entity(self, user_id: str, name: str, type: str,
                     facts: list[str] = None,
                     relations: list[dict] = None,
-                    knowledge: list[dict] = None) -> str:
+                    knowledge: list[dict] = None,
+                    metadata: dict = None) -> str:
         """
         Create or update entity with facts, relations, knowledge.
         Auto-deduplicates: merges if similar entity exists.
@@ -638,14 +708,16 @@ class CloudStore:
             entity_id = existing_id
             logger.info(f"🔀 Dedup: '{name}' → '{canonical_name}' (id: {entity_id})")
         else:
+            meta_json = json.dumps(metadata) if metadata else '{}'
             with self._cursor() as cur:
                 cur.execute(
-                    """INSERT INTO entities (user_id, name, type)
-                       VALUES (%s, %s, %s)
+                    """INSERT INTO entities (user_id, name, type, metadata)
+                       VALUES (%s, %s, %s, %s::jsonb)
                        ON CONFLICT (user_id, name) 
-                       DO UPDATE SET type = EXCLUDED.type, updated_at = NOW()
+                       DO UPDATE SET type = EXCLUDED.type, updated_at = NOW(),
+                          metadata = entities.metadata || EXCLUDED.metadata
                        RETURNING id""",
-                    (user_id, name, type)
+                    (user_id, name, type, meta_json)
                 )
                 entity_id = str(cur.fetchone()[0])
 

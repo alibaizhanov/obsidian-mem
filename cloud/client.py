@@ -82,26 +82,36 @@ class CloudMemory:
                 detail = body
             raise Exception(f"API error {e.code}: {detail}")
 
-    def add(self, messages: list[dict], user_id: str = "default") -> dict:
+    def add(self, messages: list[dict], user_id: str = "default",
+            agent_id: str = None, run_id: str = None, app_id: str = None) -> dict:
         """
         Add memories from conversation.
         
         Automatically extracts entities, facts, relations, and knowledge.
+        Returns immediately — processing happens in background.
         
         Args:
             messages: [{"role": "user", "content": "..."}, ...]
             user_id: User identifier
+            agent_id: Agent identifier (for multi-agent systems)
+            run_id: Run/session identifier
+            app_id: Application identifier
             
         Returns:
-            {"status": "ok", "created": [...], "updated": [...], "knowledge_count": N}
+            {"status": "accepted", "job_id": "job-...", "message": "..."}
         """
-        return self._request("POST", "/v1/add", {
-            "messages": messages,
-            "user_id": user_id,
-        })
+        body = {"messages": messages, "user_id": user_id}
+        if agent_id:
+            body["agent_id"] = agent_id
+        if run_id:
+            body["run_id"] = run_id
+        if app_id:
+            body["app_id"] = app_id
+        return self._request("POST", "/v1/add", body)
 
     def search(self, query: str, user_id: str = "default",
-               limit: int = 5) -> list[dict]:
+               limit: int = 5, agent_id: str = None,
+               run_id: str = None, app_id: str = None) -> list[dict]:
         """
         Semantic search across memories.
         
@@ -109,15 +119,21 @@ class CloudMemory:
             query: Natural language query
             user_id: User identifier
             limit: Max results
+            agent_id: Filter by agent
+            run_id: Filter by run/session
+            app_id: Filter by application
             
         Returns:
             [{"entity": "...", "type": "...", "score": 0.85, "facts": [...], "knowledge": [...]}]
         """
-        result = self._request("POST", "/v1/search", {
-            "query": query,
-            "user_id": user_id,
-            "limit": limit,
-        })
+        body = {"query": query, "user_id": user_id, "limit": limit}
+        if agent_id:
+            body["agent_id"] = agent_id
+        if run_id:
+            body["run_id"] = run_id
+        if app_id:
+            body["app_id"] = app_id
+        result = self._request("POST", "/v1/search", body)
         return result.get("results", [])
 
     def get_all(self, user_id: str = "default") -> list[dict]:
@@ -296,3 +312,30 @@ class CloudMemory:
     def revoke_key(self, key_id: int) -> dict:
         """Revoke a specific API key by ID."""
         return self._request("DELETE", f"/v1/keys/{key_id}")
+
+    # ---- Job Tracking (Async) ----
+
+    def job_status(self, job_id: str) -> dict:
+        """Check status of a background job."""
+        return self._request("GET", f"/v1/jobs/{job_id}")
+
+    def wait_for_job(self, job_id: str, poll_interval: float = 1.0,
+                     max_wait: float = 60.0) -> dict:
+        """Wait for a background job to complete.
+        
+        Args:
+            job_id: Job ID from add() response
+            poll_interval: Seconds between status checks
+            max_wait: Maximum seconds to wait
+            
+        Returns:
+            Job result when completed
+        """
+        import time as _time
+        start = _time.time()
+        while _time.time() - start < max_wait:
+            job = self.job_status(job_id)
+            if job["status"] in ("completed", "failed"):
+                return job
+            _time.sleep(poll_interval)
+        raise TimeoutError(f"Job {job_id} timed out after {max_wait}s")
