@@ -258,12 +258,12 @@ Be strict — only include entities that directly answer or relate to the query.
             resend.api_key = resend_key
 
             action = "reset" if is_reset else "created"
-            subject = f"Your new Mengram API key" if is_reset else "Welcome to Mengram 🧠"
+            subject = f"Your new Mengram API key" if is_reset else "Welcome to Mengram"
 
             html = f"""
             <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:0 auto;padding:40px 24px;color:#e8e8f0;background:#0a0a12;border-radius:16px">
                 <div style="text-align:center;margin-bottom:32px">
-                    <span style="font-size:36px">🧠</span>
+                    <svg width="36" height="36" viewBox="0 0 120 120"><path d="M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68" fill="none" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/><circle cx="62" cy="68" r="8" fill="#a855f7"/><circle cx="62" cy="68" r="3.5" fill="white"/></svg>
                     <h1 style="font-size:22px;font-weight:700;margin:8px 0 4px;color:#e8e8f0">Mengram</h1>
                     <p style="color:#8888a8;font-size:14px;margin:0">AI memory layer for apps</p>
                 </div>
@@ -440,7 +440,7 @@ Be strict — only include entities that directly answer or relate to the query.
 </style>
 </head><body>
 <div class="card">
-  <div class="logo">🧠</div>
+  <div class="logo"><svg width='32' height='32' viewBox='0 0 120 120'><path d='M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68' fill='none' stroke='#a855f7' stroke-width='8' stroke-linecap='round'/><circle cx='62' cy='68' r='8' fill='#a855f7'/><circle cx='62' cy='68' r='3.5' fill='white'/></svg></div>
   <h1>Sign in to Mengram</h1>
   <p>Connect your memory to ChatGPT</p>
 
@@ -761,7 +761,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                 # Add as a special "reflection" result at the top
                 top_reflection = matching[0]
                 results.insert(0, {
-                    "entity": f"🧠 Insight: {top_reflection['title']}",
+                    "entity": f"✨ Insight: {top_reflection['title']}",
                     "type": "reflection",
                     "scope": top_reflection["scope"],
                     "score": top_reflection["confidence"],

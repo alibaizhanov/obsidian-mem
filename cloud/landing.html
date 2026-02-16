@@ -18,6 +18,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Mengram — AI Memory Layer with Autonomous Agents">
     <meta name="twitter:description" content="Open-source Mem0 alternative with memory agents, shared team memory, and webhooks.">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cpath d='M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68' fill='none' stroke='%23a855f7' stroke-width='10' stroke-linecap='round'/%3E%3Ccircle cx='62' cy='68' r='10' fill='%23a855f7'/%3E%3Ccircle cx='62' cy='68' r='4.5' fill='%23fff'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -587,7 +588,11 @@
         <!-- Nav -->
         <nav class="anim">
             <div class="logo">
-                <span class="logo-icon">🧠</span> Mengram
+                <svg width="24" height="24" viewBox="0 0 120 120" style="vertical-align:middle;margin-right:2px;">
+                    <defs><linearGradient id="nav-eg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#c084fc"/><stop offset="100%" stop-color="#7c3aed"/></linearGradient></defs>
+                    <path d="M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68" fill="none" stroke="url(#nav-eg)" stroke-width="8" stroke-linecap="round"/>
+                    <circle cx="62" cy="68" r="8" fill="#a855f7"/><circle cx="62" cy="68" r="3.5" fill="#fff"/>
+                </svg> Mengram
             </div>
             <div class="nav-links">
                 <a href="#how">How it works</a>
@@ -783,7 +788,7 @@ results = m.search(<span class="c-str">"database issues"</span>)
                     <p>Vector (semantic) + BM25 (keyword) + graph expansion + LLM re-ranking. Finds what matters.</p>
                 </div>
                 <div class="feat-card">
-                    <div class="feat-icon">🧠</div>
+                    <div class="feat-icon">✨</div>
                     <h3>AI Reflections</h3>
                     <p>Generates insights from your facts — behavioral patterns, skill clusters, strategic observations.</p>
                 </div>

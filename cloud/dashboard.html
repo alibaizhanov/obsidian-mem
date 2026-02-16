@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mengram — Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cpath d='M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68' fill='none' stroke='%23a855f7' stroke-width='10' stroke-linecap='round'/%3E%3Ccircle cx='62' cy='68' r='10' fill='%23a855f7'/%3E%3Ccircle cx='62' cy='68' r='4.5' fill='%23fff'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
     <style>
@@ -206,7 +207,7 @@
 
 <div class="login-screen" id="login-screen">
     <div class="login-box">
-        <h1>🧠 Mengram</h1>
+        <h1><svg width="28" height="28" viewBox="0 0 120 120" style="vertical-align:middle;margin-right:4px;"><path d="M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68" fill="none" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/><circle cx="62" cy="68" r="8" fill="#a855f7"/><circle cx="62" cy="68" r="3.5" fill="#fff"/></svg> Mengram</h1>
         <p>Enter your API key to access your memory dashboard.</p>
         <input type="password" class="login-input" id="key-input" placeholder="om-..." autocomplete="off">
         <button class="login-btn" onclick="doLogin()">Open Dashboard</button>
@@ -217,11 +218,11 @@
 
 <div class="app" id="app">
     <div class="sidebar">
-        <div class="sidebar-logo">🧠 Mengram</div>
+        <div class="sidebar-logo"><svg width="20" height="20" viewBox="0 0 120 120" style="vertical-align:middle;margin-right:4px;"><path d="M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68" fill="none" stroke="#a855f7" stroke-width="8" stroke-linecap="round"/><circle cx="62" cy="68" r="8" fill="#a855f7"/><circle cx="62" cy="68" r="3.5" fill="#fff"/></svg> Mengram</div>
         <div class="sidebar-nav">
             <div class="nav-item active" onclick="switchTab('feed')"><span class="icon">📋</span> Memory Feed</div>
             <div class="nav-item" onclick="switchTab('agents')"><span class="icon">🤖</span> Agents</div>
-            <div class="nav-item" onclick="switchTab('insights')"><span class="icon">🧠</span> AI Insights</div>
+            <div class="nav-item" onclick="switchTab('insights')"><span class="icon">✨</span> AI Insights</div>
             <div class="nav-item" onclick="switchTab('graph')"><span class="icon">🕸️</span> Knowledge Graph</div>
             <div class="nav-item" onclick="switchTab('entities')"><span class="icon">📦</span> Entities</div>
             <div class="nav-item" onclick="switchTab('settings')"><span class="icon">⚙️</span> Settings</div>
@@ -285,7 +286,7 @@
 
         <div class="tab-content" id="tab-insights">
             <div class="page-header">
-                <h2>🧠 AI Insights</h2>
+                <h2>✨ AI Insights</h2>
                 <button onclick="triggerReflection()" style="background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">🔄 Reflect Now</button>
             </div>
             <div id="insights-box" class="loading">Analyzing your memories...</div>
@@ -550,7 +551,7 @@ async function loadInsights() {
         const d = await (await fetch(`${API}/v1/insights`,{headers:H()})).json();
         if(!d.has_insights) {
             box.innerHTML = `<div class="insight-empty">
-                <div class="ie-icon">🧠</div>
+                <div class="ie-icon">✨</div>
                 <h3>No insights yet</h3>
                 <p>Mengram needs enough memories to generate insights. Keep chatting with AI assistants, or click below to generate your first reflection.</p>
                 <button onclick="triggerReflection()">✨ Generate Insights</button>
@@ -619,7 +620,7 @@ function insightCard(icon, label, r, cls) {
 
 async function triggerReflection() {
     const box = document.getElementById('insights-box');
-    box.innerHTML = '<div class="insight-empty"><div class="ie-icon"><span class="reflecting-spinner">🧠</span></div><h3>Reflecting...</h3><p>Analyzing your memories and generating insights. This may take 10-20 seconds.</p></div>';
+    box.innerHTML = '<div class="insight-empty"><div class="ie-icon"><span class="reflecting-spinner">✨</span></div><h3>Reflecting...</h3><p>Analyzing your memories and generating insights. This may take 10-20 seconds.</p></div>';
     try {
         const d = await (await fetch(`${API}/v1/reflect`,{method:'POST',headers:H()})).json();
         const total = (d.generated.entity_reflections||0) + (d.generated.cross_entity||0) + (d.generated.temporal||0);
@@ -650,7 +651,7 @@ async function loadFeed() {
     try {
         const d = await (await fetch(`${API}/v1/feed?limit=100`,{headers:H()})).json();
         if(!d.feed||!d.feed.length) {
-            box.innerHTML = `<div class="empty"><div class="eicon">🧠</div><h3>Your memory is empty</h3><p>Use <a href="/">Claude Desktop MCP</a> or the <a href="https://pypi.org/project/mengram-ai/">Python API</a> to start building your AI memory.</p></div>`;
+            box.innerHTML = `<div class="empty"><div class="eicon">📋</div><h3>Your memory is empty</h3><p>Use <a href="/">Claude Desktop MCP</a> or the <a href="https://pypi.org/project/mengram-ai/">Python API</a> to start building your AI memory.</p></div>`;
             return;
         }
         let h='<div class="feed-list">',last='';
