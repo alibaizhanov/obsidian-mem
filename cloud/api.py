@@ -52,6 +52,7 @@ class AddRequest(BaseModel):
     agent_id: str = None
     run_id: str = None
     app_id: str = None
+    expiration_date: str = None
 
 class AddTextRequest(BaseModel):
     text: str
@@ -59,6 +60,7 @@ class AddTextRequest(BaseModel):
     agent_id: str = None
     run_id: str = None
     app_id: str = None
+    expiration_date: str = None
 
 class SearchRequest(BaseModel):
     query: str
@@ -100,7 +102,7 @@ m.add([{"role": "user", "content": "I use Python and Railway"}])
 results = m.search("deployment")
 ```
         """,
-        version="2.3.0",
+        version="2.3.1",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=[
@@ -606,7 +608,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
         return {
             "status": "ok",
-            "version": "2.3.0",
+            "version": "2.3.1",
             "cache": cache_stats,
             "connection": pool_info,
         }
@@ -704,6 +706,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                         relations=entity_relations,
                         knowledge=entity_knowledge,
                         metadata=metadata if metadata else None,
+                        expires_at=req.expiration_date,
                     )
                     created.append(name)
 

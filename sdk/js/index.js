@@ -82,6 +82,7 @@ class MengramClient {
    * @param {string} [options.agentId] - Agent ID for multi-agent systems
    * @param {string} [options.runId] - Run/session ID
    * @param {string} [options.appId] - Application ID
+   * @param {string} [options.expirationDate] - ISO datetime — facts auto-expire after this
    * @returns {Promise<{status: string, job_id?: string}>}
    */
   async add(messages, options = {}) {
@@ -91,6 +92,7 @@ class MengramClient {
       agent_id: options.agentId || null,
       run_id: options.runId || null,
       app_id: options.appId || null,
+      expiration_date: options.expirationDate || null,
     });
   }
 

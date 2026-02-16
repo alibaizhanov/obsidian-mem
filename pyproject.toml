@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mengram-ai"
-version = "2.3.0"
+version = "2.3.1"
 description = "AI memory layer with autonomous agents. Open-source Mem0 alternative with memory agents, webhooks, and cognitive insights."
 readme = "README.md"
 license = {text = "MIT"}

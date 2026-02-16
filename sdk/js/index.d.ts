@@ -13,6 +13,7 @@ export interface MemoryOptions {
   agentId?: string;
   runId?: string;
   appId?: string;
+  expirationDate?: string;
 }
 
 export interface SearchOptions extends MemoryOptions {

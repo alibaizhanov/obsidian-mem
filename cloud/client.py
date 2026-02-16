@@ -83,7 +83,8 @@ class CloudMemory:
             raise Exception(f"API error {e.code}: {detail}")
 
     def add(self, messages: list[dict], user_id: str = "default",
-            agent_id: str = None, run_id: str = None, app_id: str = None) -> dict:
+            agent_id: str = None, run_id: str = None, app_id: str = None,
+            expiration_date: str = None) -> dict:
         """
         Add memories from conversation.
         
@@ -96,6 +97,8 @@ class CloudMemory:
             agent_id: Agent identifier (for multi-agent systems)
             run_id: Run/session identifier
             app_id: Application identifier
+            expiration_date: ISO datetime string — facts auto-expire after this date.
+                             None = persist forever.
             
         Returns:
             {"status": "accepted", "job_id": "job-...", "message": "..."}
@@ -107,6 +110,8 @@ class CloudMemory:
             body["run_id"] = run_id
         if app_id:
             body["app_id"] = app_id
+        if expiration_date:
+            body["expiration_date"] = expiration_date
         return self._request("POST", "/v1/add", body)
 
     def search(self, query: str, user_id: str = "default",

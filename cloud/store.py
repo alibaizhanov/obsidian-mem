@@ -285,6 +285,18 @@ class CloudStore:
             """)
         logger.info("✅ Migration complete (v2.2: memory categories)")
 
+        # --- v2.3 TTL expiry ---
+        with self._cursor() as cur:
+            cur.execute("""
+                ALTER TABLE facts ADD COLUMN IF NOT EXISTS expires_at 
+                TIMESTAMPTZ DEFAULT NULL
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_facts_expires 
+                ON facts (expires_at) WHERE expires_at IS NOT NULL
+            """)
+        logger.info("✅ Migration complete (v2.3: TTL expiry)")
+
     # ---- Job tracking (async mode) ----
 
     def create_job(self, user_id: str, job_type: str = "add") -> str:
@@ -542,7 +554,7 @@ class CloudStore:
                 """SELECT e.id, e.name, COUNT(f.id) as fact_count,
                           CASE WHEN e.name LIKE '%% %%' THEN 1 ELSE 0 END as has_full_name
                    FROM entities e
-                   LEFT JOIN facts f ON f.entity_id = e.id AND f.archived = FALSE
+                   LEFT JOIN facts f ON f.entity_id = e.id AND f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW())
                    WHERE e.user_id = %s AND e.type = 'person' AND LOWER(e.name) != 'user'
                    GROUP BY e.id, e.name
                    ORDER BY has_full_name DESC, fact_count DESC, e.updated_at DESC
@@ -642,7 +654,8 @@ class CloudStore:
                     facts: list[str] = None,
                     relations: list[dict] = None,
                     knowledge: list[dict] = None,
-                    metadata: dict = None) -> str:
+                    metadata: dict = None,
+                    expires_at: str = None) -> str:
         """
         Create or update entity with facts, relations, knowledge.
         Auto-deduplicates: merges if similar entity exists.
@@ -660,7 +673,7 @@ class CloudStore:
                 logger.info(f"🔀 User → '{canonical_name}' (id: {entity_id})")
                 with self._cursor() as cur:
                     cur.execute("UPDATE entities SET updated_at = NOW() WHERE id = %s", (entity_id,))
-                self._add_facts_knowledge_relations(entity_id, user_id, canonical_name, facts, relations, knowledge)
+                self._add_facts_knowledge_relations(entity_id, user_id, canonical_name, facts, relations, knowledge, expires_at=expires_at)
                 return entity_id
 
         # Check for case-insensitive exact match first
@@ -685,7 +698,7 @@ class CloudStore:
                     cur.execute("UPDATE entities SET updated_at = NOW() WHERE id = %s", (entity_id,))
 
                 # Add facts, knowledge, relations below
-                self._add_facts_knowledge_relations(entity_id, user_id, name, facts, relations, knowledge)
+                self._add_facts_knowledge_relations(entity_id, user_id, name, facts, relations, knowledge, expires_at=expires_at)
                 return entity_id
 
         # Check for duplicate entity (word-boundary match)
@@ -721,7 +734,7 @@ class CloudStore:
                 )
                 entity_id = str(cur.fetchone()[0])
 
-        self._add_facts_knowledge_relations(entity_id, user_id, name, facts, relations, knowledge)
+        self._add_facts_knowledge_relations(entity_id, user_id, name, facts, relations, knowledge, expires_at=expires_at)
         return entity_id
 
     @staticmethod
@@ -774,19 +787,29 @@ class CloudStore:
     def _add_facts_knowledge_relations(self, entity_id: str, user_id: str, name: str,
                                         facts: list[str] = None,
                                         relations: list[dict] = None,
-                                        knowledge: list[dict] = None):
+                                        knowledge: list[dict] = None,
+                                        expires_at: str = None):
         """Add facts, knowledge, and relations to an entity."""
         added_facts = []
         with self._cursor() as cur:
             for fact in (facts or []):
                 importance = self.estimate_importance(fact)
-                cur.execute(
-                    """INSERT INTO facts (entity_id, content, importance)
-                       VALUES (%s, %s, %s)
-                       ON CONFLICT (entity_id, content) DO NOTHING
-                       RETURNING content""",
-                    (entity_id, fact, importance)
-                )
+                if expires_at:
+                    cur.execute(
+                        """INSERT INTO facts (entity_id, content, importance, expires_at)
+                           VALUES (%s, %s, %s, %s)
+                           ON CONFLICT (entity_id, content) DO NOTHING
+                           RETURNING content""",
+                        (entity_id, fact, importance, expires_at)
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO facts (entity_id, content, importance)
+                           VALUES (%s, %s, %s)
+                           ON CONFLICT (entity_id, content) DO NOTHING
+                           RETURNING content""",
+                        (entity_id, fact, importance)
+                    )
                 row = cur.fetchone()
                 if row:
                     added_facts.append(fact)
@@ -873,7 +896,7 @@ class CloudStore:
             entity_id = str(row["id"])
 
             # Facts (exclude archived)
-            cur.execute("SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE", (entity_id,))
+            cur.execute("SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())", (entity_id,))
             facts = [r["content"] for r in cur.fetchall()]
 
             # Relations
@@ -941,7 +964,7 @@ class CloudStore:
 
             # 2. Batch all facts (exclude archived)
             cur.execute(
-                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE",
+                "SELECT entity_id, content FROM facts WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())",
                 (entity_ids,)
             )
             for row in cur.fetchall():
@@ -1021,7 +1044,7 @@ class CloudStore:
             cur.execute(
                 """SELECT DISTINCT ON (entity_id, content) entity_id, content, importance
                    FROM facts 
-                   WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE
+                   WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())
                    ORDER BY entity_id, content, importance DESC""",
                 (entity_ids,)
             )
@@ -1259,7 +1282,7 @@ class CloudStore:
             # Batch facts (exclude archived) — sorted by importance
             cur.execute(
                 """SELECT id, entity_id, content, importance, access_count, last_accessed
-                   FROM facts WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE
+                   FROM facts WHERE entity_id = ANY(%s::uuid[]) AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())
                    ORDER BY importance DESC""",
                 (entity_ids,)
             )
@@ -1383,7 +1406,7 @@ class CloudStore:
                         top_k: int = 20) -> list[dict]:
         """Search facts by time range. Returns entities with facts created in the window."""
         with self._cursor(dict_cursor=True) as cur:
-            conditions = ["e.user_id = %s", "f.archived = FALSE"]
+            conditions = ["e.user_id = %s", "f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW())"]
             params = [user_id]
 
             if after:
@@ -1427,7 +1450,7 @@ class CloudStore:
         Returns list of archived fact contents."""
         with self._cursor(dict_cursor=True) as cur:
             cur.execute(
-                "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE",
+                "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())",
                 (entity_id,)
             )
             old_facts = [r["content"] for r in cur.fetchall()]
@@ -1472,7 +1495,7 @@ No markdown, no explanation."""
                     superseded_by = new_facts[0] if new_facts else None
                     cur.execute(
                         """UPDATE facts SET archived = TRUE, superseded_by = %s
-                           WHERE entity_id = %s AND content = %s AND archived = FALSE""",
+                           WHERE entity_id = %s AND content = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())""",
                         (superseded_by, entity_id, old_fact)
                     )
                 archived.append(old_fact)
@@ -1486,7 +1509,7 @@ No markdown, no explanation."""
         Returns {kept: [...], archived: [...]}"""
         with self._cursor(dict_cursor=True) as cur:
             cur.execute(
-                "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE ORDER BY importance DESC, created_at DESC",
+                "SELECT content FROM facts WHERE entity_id = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY importance DESC, created_at DESC",
                 (entity_id,)
             )
             facts = [r["content"] for r in cur.fetchall()]
@@ -1538,7 +1561,7 @@ Return ONLY this JSON (no markdown):
                 with self._cursor() as cur:
                     cur.execute(
                         """UPDATE facts SET archived = TRUE, superseded_by = 'dedup'
-                           WHERE entity_id = %s AND content = %s AND archived = FALSE""",
+                           WHERE entity_id = %s AND content = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())""",
                         (entity_id, fact)
                     )
                     if cur.rowcount > 0:
@@ -1601,7 +1624,7 @@ Return ONLY JSON (no markdown):
                 cur.execute(
                     """SELECT COUNT(*) as cnt FROM facts f
                        JOIN entities e ON e.id = f.entity_id
-                       WHERE e.user_id = %s AND f.archived = FALSE 
+                       WHERE e.user_id = %s AND f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW()) 
                        AND f.created_at > %s""",
                     (user_id, last_reflection)
                 )
@@ -1613,7 +1636,7 @@ Return ONLY JSON (no markdown):
                 cur.execute(
                     """SELECT COUNT(*) as cnt FROM facts f
                        JOIN entities e ON e.id = f.entity_id
-                       WHERE e.user_id = %s AND f.archived = FALSE""",
+                       WHERE e.user_id = %s AND f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW())""",
                     (user_id,)
                 )
                 new_facts = cur.fetchone()["cnt"]
@@ -1967,7 +1990,7 @@ Return ONLY JSON (no markdown):
                           e.name as entity_name, e.type as entity_type
                    FROM facts f
                    JOIN entities e ON e.id = f.entity_id
-                   WHERE e.user_id = %s AND f.archived = FALSE
+                   WHERE e.user_id = %s AND f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW())
                    ORDER BY f.created_at DESC
                    LIMIT %s""",
                 (user_id, limit)
@@ -2262,7 +2285,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 FROM facts f
                 JOIN entities e ON e.id = f.entity_id
                 WHERE e.user_id = %s AND f.created_at > NOW() - INTERVAL '7 days'
-                AND f.archived = FALSE
+                AND f.archived = FALSE AND (f.expires_at IS NULL OR f.expires_at > NOW())
                 ORDER BY f.created_at DESC LIMIT 50
             """, (user_id,))
             recent = cur.fetchall()
@@ -2887,7 +2910,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                 # Fetch facts
                 cur.execute(
                     """SELECT content, importance FROM facts
-                       WHERE entity_id = %s AND archived = FALSE
+                       WHERE entity_id = %s AND archived = FALSE AND (expires_at IS NULL OR expires_at > NOW())
                        ORDER BY importance DESC, created_at DESC LIMIT 15""",
                     (eid,)
                 )
