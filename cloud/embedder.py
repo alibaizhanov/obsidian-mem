@@ -14,8 +14,8 @@ from typing import Optional
 class CloudEmbedder:
     """
     Generates embeddings via API.
-    Supports OpenAI (text-embedding-3-small, 1536D) 
-    and can be extended for other providers.
+    Uses OpenAI text-embedding-3-large with Matryoshka dimensionality reduction (1536D).
+    Better quality than text-embedding-3-small at the same dimensions.
     """
 
     def __init__(self, provider: str = "openai", api_key: Optional[str] = None):
@@ -23,7 +23,7 @@ class CloudEmbedder:
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
         
         if provider == "openai":
-            self.model = "text-embedding-3-small"
+            self.model = "text-embedding-3-large"
             self.dimensions = 1536
             self.url = "https://api.openai.com/v1/embeddings"
         else:
@@ -38,6 +38,7 @@ class CloudEmbedder:
         data = json.dumps({
             "model": self.model,
             "input": texts,
+            "dimensions": self.dimensions,
         }).encode()
 
         req = urllib.request.Request(

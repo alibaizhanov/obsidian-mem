@@ -107,7 +107,7 @@ CREATE TABLE embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
     chunk_text TEXT NOT NULL,
-    embedding vector(1536),               -- OpenAI text-embedding-3-small = 1536 dimensions
+    embedding vector(1536),               -- OpenAI text-embedding-3-large @ 1536 dimensions (Matryoshka)
     tsv tsvector,                         -- BM25 text search (hybrid search)
     created_at TIMESTAMP DEFAULT NOW()
 );
