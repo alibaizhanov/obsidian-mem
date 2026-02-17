@@ -208,6 +208,21 @@ class MengramClient {
     return this._request('GET', '/v1/graph');
   }
 
+  // ---- Cognitive Profile ----
+
+  /**
+   * Generate a Cognitive Profile — a ready-to-use system prompt from user memory.
+   * @param {string} userId - User to generate profile for
+   * @param {object} [options]
+   * @param {boolean} [options.force] - Regenerate even if cached
+   * @returns {Promise<{user_id: string, system_prompt: string, facts_used: number, status: string}>}
+   */
+  async getProfile(userId = 'default', options = {}) {
+    const params = {};
+    if (options.force) params.force = 'true';
+    return this._request('GET', `/v1/profile/${userId}`, null, params);
+  }
+
   /**
    * Timeline search.
    * @param {object} [options]

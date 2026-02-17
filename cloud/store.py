@@ -1891,6 +1891,111 @@ Return ONLY JSON (no markdown):
         self.cache.set(cache_key, result, ttl=30)
         return result
 
+    # ---- Cognitive Profile ----
+
+    def get_profile(self, user_id: str, force: bool = False) -> dict:
+        """Generate a cognitive profile — a ready-to-use system prompt from all user memory.
+        Cached for 1 hour unless force=True."""
+        cache_key = f"profile:{user_id}"
+        if not force:
+            cached = self.cache.get(cache_key)
+            if cached:
+                return cached
+
+        # 1. Gather all facts
+        entities = self.get_all_entities_full(user_id)
+        if not entities:
+            return {
+                "user_id": user_id,
+                "system_prompt": "",
+                "facts_used": 0,
+                "last_updated": None,
+                "status": "no_data"
+            }
+
+        # 2. Build fact summary for LLM
+        sections = []
+        total_facts = 0
+        for ent in entities:
+            if not ent.get("facts"):
+                continue
+            facts_str = "\n".join(f"  - {f}" for f in ent["facts"][:20])
+            rels_str = ""
+            if ent.get("relations"):
+                rels_str = "\n  Relations: " + ", ".join(
+                    f"{r.get('type', '')} → {r.get('target', '')}"
+                    for r in ent["relations"][:5]
+                )
+            sections.append(f"{ent['entity']} ({ent['type']}):\n{facts_str}{rels_str}")
+            total_facts += len(ent["facts"][:20])
+
+        if not sections:
+            return {
+                "user_id": user_id,
+                "system_prompt": "",
+                "facts_used": 0,
+                "last_updated": None,
+                "status": "no_facts"
+            }
+
+        memory_dump = "\n\n".join(sections[:50])  # Cap at 50 entities
+
+        # 3. Generate system prompt via LLM
+        import os
+        openai_key = os.environ.get("OPENAI_API_KEY", "")
+        if not openai_key:
+            return {"user_id": user_id, "system_prompt": "", "facts_used": total_facts,
+                    "status": "no_llm_key"}
+
+        try:
+            import openai
+            client = openai.OpenAI(api_key=openai_key)
+
+            prompt = f"""You are a profile generator. Based on the memory below about a user, 
+create a concise system prompt that any AI assistant can use to personalize responses.
+
+The system prompt should include:
+- Who the user is (name, age, location, occupation if known)
+- What they're currently working on or interested in
+- Communication preferences (language, tone, level of detail)
+- Key relationships and context
+- What to emphasize and what to avoid
+- Any patterns in behavior or preferences
+
+Write ONLY the system prompt text. No preamble, no explanation. 
+Make it 100-200 words, natural and useful.
+If user data is in a non-English language, write the profile in that language.
+
+User memory:
+{memory_dump}"""
+
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.3,
+            )
+
+            system_prompt = resp.choices[0].message.content.strip()
+
+            from datetime import datetime, timezone
+            result = {
+                "user_id": user_id,
+                "system_prompt": system_prompt,
+                "facts_used": total_facts,
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "status": "ok"
+            }
+
+            # Cache for 1 hour
+            self.cache.set(cache_key, result, ttl=3600)
+            return result
+
+        except Exception as e:
+            logger.error(f"Profile generation failed: {e}")
+            return {"user_id": user_id, "system_prompt": "", "facts_used": total_facts,
+                    "status": "error", "error": str(e)}
+
     def _get_stats_uncached(self, user_id: str) -> dict:
         """User's vault statistics (uncached)."""
         with self._cursor(dict_cursor=True) as cur:

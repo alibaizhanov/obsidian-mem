@@ -69,6 +69,15 @@ export interface JobStatus {
   error?: string;
 }
 
+export interface CognitiveProfile {
+  user_id: string;
+  system_prompt: string;
+  facts_used: number;
+  last_updated: string | null;
+  status: 'ok' | 'no_data' | 'no_facts' | 'no_llm_key' | 'error';
+  error?: string;
+}
+
 export interface Webhook {
   id: number;
   url: string;
@@ -98,6 +107,7 @@ export declare class MengramClient {
   delete(name: string): Promise<boolean>;
   stats(): Promise<Stats>;
   graph(): Promise<{ nodes: any[]; edges: any[] }>;
+  getProfile(userId?: string, options?: { force?: boolean }): Promise<CognitiveProfile>;
   timeline(options?: { after?: string; before?: string; limit?: number }): Promise<any[]>;
 
   // Agents

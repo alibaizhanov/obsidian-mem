@@ -102,7 +102,7 @@ m.add([{"role": "user", "content": "I use Python and Railway"}])
 results = m.search("deployment")
 ```
         """,
-        version="2.3.2",
+        version="2.4.0",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=[
@@ -608,7 +608,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
         return {
             "status": "ok",
-            "version": "2.3.2",
+            "version": "2.4.0",
             "cache": cache_stats,
             "connection": pool_info,
         }
@@ -1260,6 +1260,19 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     async def feed(limit: int = 50, user_id: str = Depends(auth)):
         """Memory feed — recent facts with timestamps for dashboard."""
         return store.get_feed(user_id, limit=min(limit, 100))
+
+    @app.get("/v1/profile/{target_user_id}", tags=["Memory"])
+    async def get_profile(target_user_id: str, force: bool = False, user_id: str = Depends(auth)):
+        """Cognitive Profile — generates a ready-to-use system prompt from user memory.
+        
+        Returns a personalization prompt that can be inserted into any LLM.
+        Cached for 1 hour. Use force=true to regenerate."""
+        return store.get_profile(target_user_id, force=force)
+
+    @app.get("/v1/profile", tags=["Memory"])
+    async def get_own_profile(force: bool = False, user_id: str = Depends(auth)):
+        """Cognitive Profile for the authenticated user."""
+        return store.get_profile(user_id, force=force)
 
     return app
 

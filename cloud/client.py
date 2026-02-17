@@ -185,6 +185,28 @@ class CloudMemory:
         """Get knowledge graph (nodes + edges)."""
         return self._request("GET", "/v1/graph")
 
+    # ---- Cognitive Profile ----
+
+    def get_profile(self, user_id: str = "default", force: bool = False) -> dict:
+        """
+        Generate a Cognitive Profile — a ready-to-use system prompt from user memory.
+        
+        The profile summarizes who the user is, their preferences, communication style,
+        current focus, and key relationships. Insert into any LLM's system prompt for
+        instant personalization.
+        
+        Args:
+            user_id: User to generate profile for
+            force: If True, regenerate even if cached
+            
+        Returns:
+            {"user_id": "...", "system_prompt": "...", "facts_used": 47, "status": "ok"}
+        """
+        params = {}
+        if force:
+            params["force"] = "true"
+        return self._request("GET", f"/v1/profile/{user_id}", params=params)
+
     # ---- Agents ----
 
     def run_agents(self, agent: str = "all", auto_fix: bool = False,
