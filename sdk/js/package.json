@@ -1,7 +1,7 @@
 {
   "name": "mengram-ai",
-  "version": "2.5.0",
-  "description": "AI Memory Layer with Autonomous Agents — JavaScript SDK",
+  "version": "2.5.1",
+  "description": "Human-like memory for AI — semantic, episodic & procedural memory. Cognitive Profile, unified search, memory agents. Free Mem0 alternative.",
   "main": "index.js",
   "types": "index.d.ts",
   "license": "Apache-2.0",

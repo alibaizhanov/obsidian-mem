@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mengram — AI Memory Layer with Autonomous Agents</title>
-    <meta name="description" content="Open-source memory layer for AI apps. Memory agents that clean, analyze, and find patterns. Shared team memory. Webhooks. MCP + API. Free alternative to Mem0.">
-    <meta name="keywords" content="AI memory, LLM memory, Mem0 alternative, MCP server, Claude Desktop memory, knowledge graph, AI agents, shared memory, webhooks">
+    <title>Mengram — Human-Like Memory for AI (Semantic + Episodic + Procedural)</title>
+    <meta name="description" content="The only AI memory API with 3 memory types: semantic, episodic, and procedural. Cognitive Profile generates instant system prompts. Replace RAG with one API call. Free open-source alternative to Mem0.">
+    <meta name="keywords" content="AI memory, LLM memory, Mem0 alternative, episodic memory, procedural memory, cognitive profile, MCP server, Claude Desktop memory, knowledge graph, AI agents, contextual memory, RAG alternative">
     <meta name="author" content="Ali Baizhanov">
     <link rel="canonical" href="https://mengram.io">
     <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://mengram.io">
-    <meta property="og:title" content="Mengram — AI Memory Layer with Autonomous Agents">
-    <meta property="og:description" content="Open-source memory layer with agents that think. Not just storage — Mengram cleans, analyzes, and finds patterns in your AI conversations.">
+    <meta property="og:title" content="Mengram — Human-Like Memory for AI">
+    <meta property="og:description" content="3 memory types like a human brain: semantic (facts), episodic (events), procedural (workflows). Cognitive Profile for instant personalization. Free & open-source.">
     <meta property="og:site_name" content="Mengram">
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Mengram — AI Memory Layer with Autonomous Agents">
-    <meta name="twitter:description" content="Open-source Mem0 alternative with memory agents, shared team memory, and webhooks.">
+    <meta name="twitter:title" content="Mengram — Human-Like Memory for AI">
+    <meta name="twitter:description" content="The only AI memory API with semantic, episodic & procedural memory. Replace RAG with one API call. Free open-source Mem0 alternative.">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cpath d='M60 16 Q92 16 96 48 Q100 78 72 88 Q50 96 38 76 Q26 58 46 46 Q62 38 70 52 Q76 64 62 68' fill='none' stroke='%23a855f7' stroke-width='10' stroke-linecap='round'/%3E%3Ccircle cx='62' cy='68' r='10' fill='%23a855f7'/%3E%3Ccircle cx='62' cy='68' r='4.5' fill='%23fff'/%3E%3C/svg%3E">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -608,10 +608,10 @@
         <section class="hero">
             <div class="hero-badge anim">
                 <span class="pulse"></span>
-                Open Source · Memory Agents · Team Sharing · Python & JS SDK · Free
+                Open Source · 3 Memory Types · Cognitive Profile · Agents · Python & JS SDK · Free
             </div>
-            <h1 class="anim d1">Memory that<br>thinks for you.</h1>
-            <p class="anim d2">Open-source AI memory layer with autonomous agents. Not just storage — Mengram cleans, connects, and finds hidden patterns in your knowledge. Team sharing, webhooks, MCP + API.</p>
+            <h1 class="anim d1">Memory like a<br>human brain.</h1>
+            <p class="anim d2">The only AI memory API with human-like architecture: semantic, episodic, and procedural memory. Your AI remembers facts, events, and learned workflows. Replace your RAG pipeline with one API call.</p>
             <div class="hero-cta anim d3">
                 <a href="#install" class="btn btn-primary">⚡ Get Started Free</a>
                 <a href="https://github.com/alibaizhanov/mengram" class="btn btn-secondary">GitHub →</a>
@@ -641,13 +641,13 @@
                 </div>
                 <div class="how-card">
                     <div class="how-num n2">2</div>
-                    <h3>Mengram extracts & saves</h3>
-                    <p>Important facts, decisions, preferences — automatically extracted and stored in your personal knowledge graph.</p>
+                    <h3>Mengram extracts 3 memory types</h3>
+                    <p><strong>Semantic</strong> — facts, preferences, skills. <strong>Episodic</strong> — events, discussions, decisions. <strong>Procedural</strong> — workflows, processes, habits.</p>
                 </div>
                 <div class="how-card">
                     <div class="how-num n3">3</div>
-                    <h3>Every AI knows you</h3>
-                    <p>Next conversation — your AI already knows your name, projects, tech stack. No repeating yourself.</p>
+                    <h3>Every AI knows you deeply</h3>
+                    <p>One API call returns a Cognitive Profile — a ready-to-use system prompt from all 3 memory types. Zero effort personalization.</p>
                 </div>
             </div>
         </section>
@@ -742,15 +742,19 @@
 
 m = CloudMemory(api_key=<span class="c-str">"your-api-key"</span>)
 
-<span class="c-cmt"># Save knowledge from conversation</span>
+<span class="c-cmt"># Save — auto-extracts facts, events, workflows</span>
 m.add([
     {<span class="c-str">"role"</span>: <span class="c-str">"user"</span>, <span class="c-str">"content"</span>: <span class="c-str">"Fixed OOM with Redis cache"</span>},
     {<span class="c-str">"role"</span>: <span class="c-str">"assistant"</span>, <span class="c-str">"content"</span>: <span class="c-str">"Got it."</span>},
 ])
 
-<span class="c-cmt"># Search — finds by meaning</span>
-results = m.search(<span class="c-str">"database issues"</span>)
-<span class="c-cmt"># → entities, facts, relations, knowledge</span></pre>
+<span class="c-cmt"># Unified search — all 3 memory types</span>
+results = m.search_all(<span class="c-str">"database issues"</span>)
+<span class="c-cmt"># → {semantic: [...], episodic: [...], procedural: [...]}</span>
+
+<span class="c-cmt"># Cognitive Profile — instant personalization</span>
+profile = m.get_profile(<span class="c-str">"ali"</span>)
+<span class="c-cmt"># → ready system prompt for any LLM</span></pre>
                             </div>
                         </div>
                     </div>
@@ -780,14 +784,21 @@ results = m.search(<span class="c-str">"database issues"</span>)
 
 <span class="c-kw">const</span> m = <span class="c-kw">new</span> MengramClient(<span class="c-str">'your-api-key'</span>);
 
-<span class="c-cmt">// Save knowledge from conversation</span>
+<span class="c-cmt">// Save — auto-extracts facts, events, workflows</span>
 <span class="c-kw">await</span> m.add([
     { <span class="c-str">role</span>: <span class="c-str">'user'</span>, <span class="c-str">content</span>: <span class="c-str">'Fixed OOM with Redis cache'</span> },
     { <span class="c-str">role</span>: <span class="c-str">'assistant'</span>, <span class="c-str">content</span>: <span class="c-str">'Got it.'</span> },
-], { <span class="c-str">userId</span>: <span class="c-str">'ali'</span>, <span class="c-str">agentId</span>: <span class="c-str">'support-bot'</span> });
+], { <span class="c-str">userId</span>: <span class="c-str">'ali'</span> });
 
-<span class="c-cmt">// Search — finds by meaning</span>
-<span class="c-kw">const</span> results = <span class="c-kw">await</span> m.search(<span class="c-str">'database issues'</span>);</pre>
+<span class="c-cmt">// Unified search — all 3 memory types</span>
+<span class="c-kw">const</span> all = <span class="c-kw">await</span> m.searchAll(<span class="c-str">'database issues'</span>);
+<span class="c-cmt">// → {semantic: [...], episodic: [...], procedural: [...]}</span>
+
+<span class="c-cmt">// Episodic — what happened?</span>
+<span class="c-kw">const</span> events = <span class="c-kw">await</span> m.episodes({ <span class="c-str">query</span>: <span class="c-str">'deployment'</span> });
+
+<span class="c-cmt">// Procedural — how to do it?</span>
+<span class="c-kw">const</span> procs = <span class="c-kw">await</span> m.procedures({ <span class="c-str">query</span>: <span class="c-str">'release'</span> });</pre>
                             </div>
                         </div>
                     </div>
@@ -796,12 +807,32 @@ results = m.search(<span class="c-str">"database issues"</span>)
         </section>
         <section class="features-section" id="features">
             <h2>What makes Mengram different</h2>
-            <p>Others store facts. Mengram thinks about them.</p>
+            <p>Others store facts. Mengram remembers like a human brain.</p>
             <div class="features-grid">
+                <div class="feat-card" style="border-color: var(--accent); box-shadow: 0 0 20px var(--accent-dim);">
+                    <div class="feat-icon">🧠</div>
+                    <h3>3 Memory Types</h3>
+                    <p><strong>Semantic</strong> — facts & preferences. <strong>Episodic</strong> — events & decisions. <strong>Procedural</strong> — learned workflows. Just like a human brain. No competitor has this.</p>
+                </div>
+                <div class="feat-card" style="border-color: var(--accent); box-shadow: 0 0 20px var(--accent-dim);">
+                    <div class="feat-icon">👤</div>
+                    <h3>Cognitive Profile</h3>
+                    <p>One API call generates a ready-to-use system prompt from all memories. Insert into any LLM for instant personalization. Replace RAG with a single endpoint.</p>
+                </div>
                 <div class="feat-card">
                     <div class="feat-icon">🤖</div>
                     <h3>Memory Agents</h3>
                     <p>Curator cleans contradictions. Connector finds hidden patterns. Digest gives weekly briefs. Runs autonomously.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-icon">🔍</div>
+                    <h3>Unified Search</h3>
+                    <p>Search across all 3 memory types at once. Vector + BM25 + graph expansion + LLM re-ranking. One call returns facts, events, and workflows.</p>
+                </div>
+                <div class="feat-card">
+                    <div class="feat-icon">⚙️</div>
+                    <h3>Procedure Feedback</h3>
+                    <p>Your AI learns which workflows succeed. Track success/fail counts per procedure. Proven patterns surface first.</p>
                 </div>
                 <div class="feat-card">
                     <div class="feat-icon">🤝</div>
@@ -819,11 +850,6 @@ results = m.search(<span class="c-str">"database issues"</span>)
                     <p>Entities, relations, facts — not just text. "Ali works_at Uzum Bank", not "the user mentioned a bank".</p>
                 </div>
                 <div class="feat-card">
-                    <div class="feat-icon">🔍</div>
-                    <h3>Hybrid Search</h3>
-                    <p>Vector (semantic) + BM25 (keyword) + graph expansion + LLM re-ranking. Finds what matters.</p>
-                </div>
-                <div class="feat-card">
                     <div class="feat-icon">✨</div>
                     <h3>AI Reflections</h3>
                     <p>Generates insights from your facts — behavioral patterns, skill clusters, strategic observations.</p>
@@ -833,50 +859,76 @@ results = m.search(<span class="c-str">"database issues"</span>)
 
         <!-- Comparison -->
         <section class="features-section" style="padding-top: 0;">
-            <h2>Mengram vs Mem0</h2>
-            <p>Both store AI memories. Mengram thinks about them.</p>
-            <div style="max-width: 700px; margin: 30px auto 0;">
+            <h2>Mengram vs Mem0 vs Supermemory</h2>
+            <p>Others store facts. Mengram remembers experiences and learns workflows.</p>
+            <div style="max-width: 820px; margin: 30px auto 0; overflow-x: auto;">
                 <table style="width:100%;border-collapse:collapse;font-size:14px;">
                     <thead>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <th style="text-align:left;padding:12px 16px;color:var(--text-2);font-weight:500;"></th>
                             <th style="text-align:center;padding:12px 16px;color:var(--accent);font-weight:600;">Mengram</th>
                             <th style="text-align:center;padding:12px 16px;color:var(--text-2);font-weight:500;">Mem0</th>
+                            <th style="text-align:center;padding:12px 16px;color:var(--text-2);font-weight:500;">Supermemory</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding:10px 16px;">Memory Storage</td>
+                            <td style="padding:10px 16px;">Semantic Memory <span style="color:var(--text-3);font-size:11px;">(facts)</span></td>
+                            <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
-                        <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding:10px 16px;">Semantic Search</td>
+                        <tr style="border-bottom: 1px solid var(--border);background:var(--accent-dim);">
+                            <td style="padding:10px 16px;font-weight:600;">Episodic Memory <span style="color:var(--accent);font-size:11px;">(events)</span></td>
                             <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);background:var(--accent-dim);">
+                            <td style="padding:10px 16px;font-weight:600;">Procedural Memory <span style="color:var(--accent);font-size:11px;">(workflows)</span></td>
                             <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);background:var(--accent-dim);">
+                            <td style="padding:10px 16px;font-weight:600;">Cognitive Profile</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);background:var(--accent-dim);">
+                            <td style="padding:10px 16px;font-weight:600;">Unified Search <span style="color:var(--accent);font-size:11px;">(all 3 types)</span></td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Knowledge Graph</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Autonomous Agents</td>
                             <td style="text-align:center;padding:10px;">✅ <span style="color:var(--green);font-size:11px;">3 agents</span></td>
+                            <td style="text-align:center;padding:10px;">❌</td>
                             <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Team Shared Memory</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding:10px 16px;">AI Reflections & Insights</td>
+                            <td style="padding:10px 16px;">AI Reflections</td>
                             <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
                             <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Webhooks</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
@@ -884,24 +936,17 @@ results = m.search(<span class="c-str">"database issues"</span>)
                             <td style="padding:10px 16px;">MCP Server</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Python & JS SDK</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding:10px 16px;">Async Mode + Job Tracking</td>
-                            <td style="text-align:center;padding:10px;">✅</td>
-                            <td style="text-align:center;padding:10px;">✅</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--border);">
-                            <td style="padding:10px 16px;">Memory Categories</td>
-                            <td style="text-align:center;padding:10px;">✅ <span style="color:var(--green);font-size:11px;">user, agent, run, app</span></td>
                             <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Self-hostable</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                         </tr>
@@ -909,6 +954,7 @@ results = m.search(<span class="c-str">"database issues"</span>)
                             <td style="padding:10px 16px;font-weight:600;">Price</td>
                             <td style="text-align:center;padding:10px;color:var(--green);font-weight:600;">Free</td>
                             <td style="text-align:center;padding:10px;color:var(--text-2);">$19-249/mo</td>
+                            <td style="text-align:center;padding:10px;color:var(--text-2);">Enterprise</td>
                         </tr>
                     </tbody>
                 </table>
@@ -932,7 +978,7 @@ results = m.search(<span class="c-str">"database issues"</span>)
         <!-- Footer -->
         <footer>
             <p>
-                Mengram — open source memory layer for AI
+                Mengram — human-like memory for AI · v2.5.1.1
                 &nbsp;·&nbsp;
                 <a href="https://github.com/alibaizhanov/mengram">GitHub</a>
                 &nbsp;·&nbsp;

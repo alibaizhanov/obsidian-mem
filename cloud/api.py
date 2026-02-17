@@ -87,9 +87,21 @@ def create_cloud_api() -> FastAPI:
     app = FastAPI(
         title="Mengram API",
         description="""
-## AI Memory Layer with Autonomous Agents
+## Human-Like Memory for AI — Semantic + Episodic + Procedural
 
-Mengram gives your AI persistent memory with knowledge graph, autonomous agents, team sharing, and webhooks.
+The only AI memory API with 3 memory types. Your AI remembers facts, events, and learned workflows.
+
+### 3 Memory Types
+- **Semantic** — facts, preferences, skills (entities, relations, knowledge graph)
+- **Episodic** — events, decisions, experiences (what happened, when, outcome)
+- **Procedural** — workflows, processes, habits (learned step-by-step procedures)
+
+### Key Features
+- **Cognitive Profile** — one API call generates a system prompt from all memory types
+- **Unified Search** — search across all 3 types simultaneously
+- **Procedure Feedback** — AI learns which workflows succeed
+- **Memory Agents** — autonomous cleanup, pattern detection, weekly digests
+- **Team Sharing** — shared memory across team members
 
 ### Authentication
 All endpoints require `Authorization: Bearer YOUR_API_KEY` header.
@@ -99,15 +111,18 @@ All endpoints require `Authorization: Bearer YOUR_API_KEY` header.
 from mengram.cloud.client import CloudMemory
 m = CloudMemory(api_key="om-...")
 m.add([{"role": "user", "content": "I use Python and Railway"}])
-results = m.search("deployment")
+results = m.search_all("deployment")  # semantic + episodic + procedural
+profile = m.get_profile("ali")        # instant system prompt
 ```
         """,
-        version="2.5.0",
+        version="2.5.1",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=[
-            {"name": "Memory", "description": "Store and retrieve memories from conversations"},
-            {"name": "Search", "description": "Semantic search across all memories"},
+            {"name": "Memory", "description": "Store and retrieve semantic memories"},
+            {"name": "Episodic Memory", "description": "Events, decisions, experiences — what happened"},
+            {"name": "Procedural Memory", "description": "Workflows, processes — how to do things"},
+            {"name": "Search", "description": "Semantic and unified search across all memory types"},
             {"name": "Agents", "description": "Autonomous memory agents — Curator, Connector, Digest"},
             {"name": "Teams", "description": "Shared team memory with invite codes"},
             {"name": "Webhooks", "description": "HTTP notifications on memory events"},
@@ -608,7 +623,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
         return {
             "status": "ok",
-            "version": "2.5.0",
+            "version": "2.5.1",
             "cache": cache_stats,
             "connection": pool_info,
         }

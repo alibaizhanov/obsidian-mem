@@ -1,6 +1,6 @@
 # mengram-ai
 
-JavaScript / TypeScript SDK for [Mengram](https://mengram.io) — AI Memory Layer with Autonomous Agents.
+JavaScript / TypeScript SDK for [Mengram](https://mengram.io) — Human-like memory for AI with 3 memory types: semantic, episodic, and procedural.
 
 ## Install
 
@@ -13,60 +13,73 @@ npm install mengram-ai
 ```javascript
 const { MengramClient } = require('mengram-ai');
 
-const m = new MengramClient('mg-your-api-key');
+const m = new MengramClient('om-your-api-key');
 
-// Add memories from conversation
+// Add memories — auto-extracts facts, events, workflows
 await m.add([
-  { role: 'user', content: 'I work at Acme Corp as a senior engineer. I prefer dark mode.' },
-  { role: 'assistant', content: 'Noted your preferences!' }
+  { role: 'user', content: 'Fixed the auth bug. My process: check logs, reproduce locally, fix and deploy.' },
 ], { userId: 'ali' });
 
-// Search memories
-const results = await m.search('work preferences', { userId: 'ali' });
-console.log(results);
-// [{ entity: 'User', type: 'person', score: 0.92, facts: ['Works at Acme Corp', 'Prefers dark mode'] }]
+// Semantic search (classic)
+const results = await m.search('auth issues', { userId: 'ali' });
 
-// Multi-agent memory
-await m.add(messages, {
-  userId: 'ali',
-  agentId: 'support-bot',
-  appId: 'helpdesk'
-});
+// Episodic — what happened?
+const events = await m.episodes({ query: 'auth bug' });
+// → [{summary: "Fixed auth bug", outcome: "Resolved", participants: [...]}]
+
+// Procedural — how to do it?
+const procs = await m.procedures({ query: 'debug' });
+// → [{name: "Debug process", steps: [...], success_count: 3}]
+
+// Unified search — all 3 types at once
+const all = await m.searchAll('deployment issues');
+// → { semantic: [...], episodic: [...], procedural: [...] }
+
+// Procedure feedback — AI learns what works
+await m.procedureFeedback(procId, { success: true });
+
+// Cognitive Profile — instant personalization
+const profile = await m.getProfile('ali');
+// → { system_prompt: "You are talking to Ali, a developer..." }
 ```
 
 ## TypeScript
 
 ```typescript
-import { MengramClient, SearchResult } from 'mengram-ai';
+import { MengramClient, SearchResult, Episode, Procedure, UnifiedSearchResult } from 'mengram-ai';
 
-const m = new MengramClient('mg-...');
+const m = new MengramClient('om-...');
+
 const results: SearchResult[] = await m.search('preferences');
+const events: Episode[] = await m.episodes({ query: 'deployment' });
+const procs: Procedure[] = await m.procedures({ query: 'release' });
+const all: UnifiedSearchResult = await m.searchAll('issues');
 ```
 
 ## API
 
 | Method | Description |
 |--------|-------------|
-| `add(messages, options?)` | Add memories from conversation |
+| `add(messages, options?)` | Add memories (extracts all 3 types) |
 | `addText(text, options?)` | Add memories from plain text |
 | `search(query, options?)` | Semantic search |
+| `searchAll(query, options?)` | **Unified search (all 3 types)** |
+| `episodes(options?)` | **Search/list episodic memories** |
+| `procedures(options?)` | **Search/list procedural memories** |
+| `procedureFeedback(id, options?)` | **Record success/failure** |
+| `getProfile(userId?, options?)` | **Cognitive Profile** |
 | `getAll(options?)` | List all memories |
 | `get(name)` | Get specific entity |
 | `delete(name)` | Delete entity |
-| `stats()` | Usage statistics |
-| `graph()` | Knowledge graph |
 | `runAgents(options?)` | Run memory agents |
-| `insights()` | AI-generated reflections |
+| `insights()` | AI reflections |
 | `createTeam(name)` | Create shared team |
-| `joinTeam(code)` | Join team with invite code |
-| `shareMemory(entity, teamId)` | Share memory with team |
-| `listKeys()` | List API keys |
-| `createKey(name?)` | Create new API key |
-
-All methods support `userId`, `agentId`, `runId`, `appId` options for multi-agent systems.
+| `joinTeam(code)` | Join team |
+| `shareMemory(entity, teamId)` | Share with team |
 
 ## Links
 
+- [Website](https://mengram.io)
 - [Documentation](https://mengram.io/docs)
 - [Python SDK](https://pypi.org/project/mengram-ai/)
 - [GitHub](https://github.com/alibaizhanov/mengram)

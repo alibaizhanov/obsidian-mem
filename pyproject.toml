@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mengram-ai"
-version = "2.5.0"
-description = "AI memory layer with autonomous agents. Open-source Mem0 alternative with memory agents, webhooks, and cognitive insights."
+version = "2.5.1"
+description = "Human-like memory for AI — semantic, episodic & procedural. Cognitive Profile, unified search, memory agents. Free open-source Mem0 alternative."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
