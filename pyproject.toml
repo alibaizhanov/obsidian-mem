@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mengram-ai"
-version = "2.5.2"
+version = "2.5.3"
 description = "Human-like memory for AI — semantic, episodic & procedural. Cognitive Profile, unified search, memory agents. Free open-source Mem0 alternative."
 readme = "README.md"
 license = {text = "MIT"}
@@ -15,7 +15,9 @@ authors = [
 keywords = [
     "memory", "mengram", "knowledge-graph", "llm", "ai", "mcp",
     "second-brain", "rag", "semantic-search", "embeddings",
-    "agents", "webhooks", "mem0-alternative",
+    "agents", "webhooks", "mem0-alternative", "langchain",
+    "episodic-memory", "procedural-memory", "cognitive-profile",
+    "contextual-memory", "langchain-memory",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

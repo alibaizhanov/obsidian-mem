@@ -626,6 +626,7 @@
                 <span>🔵 Cursor</span>
                 <span>🌊 Windsurf</span>
                 <span>💬 ChatGPT</span>
+                <span>🦜 LangChain</span>
                 <span>🔍 Perplexity</span>
             </div>
         </div>
@@ -661,6 +662,7 @@
                 <button class="install-tab active" onclick="showInstall('claude')">🟣 Claude Desktop / MCP</button>
                 <button class="install-tab" onclick="showInstall('api')">🐍 Python</button>
                 <button class="install-tab" onclick="showInstall('js')">⚡ JavaScript</button>
+                <button class="install-tab" onclick="showInstall('langchain')">🦜 LangChain</button>
             </div>
 
             <!-- Claude Desktop -->
@@ -799,6 +801,70 @@ profile = m.get_profile(<span class="c-str">"ali"</span>)
 
 <span class="c-cmt">// Procedural — how to do it?</span>
 <span class="c-kw">const</span> procs = <span class="c-kw">await</span> m.procedures({ <span class="c-str">query</span>: <span class="c-str">'release'</span> });</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LangChain -->
+            <div class="install-panel" id="panel-langchain">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-num">1</div>
+                        <div>
+                            <h4>Install</h4>
+                            <div class="code-box">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                                <code>pip install mengram-ai[langchain]</code>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">2</div>
+                        <div>
+                            <h4>Replace ConversationBufferMemory</h4>
+                            <p>Drop-in replacement — returns relevant knowledge from all 3 memory types instead of raw messages.</p>
+                            <div class="code-box">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="c-kw">from</span> <span class="c-fn">mengram.integrations.langchain</span> <span class="c-kw">import</span> MengramMemory
+
+<span class="c-cmt"># Replaces ConversationBufferMemory</span>
+memory = MengramMemory(
+    api_key=<span class="c-str">"your-api-key"</span>,
+    user_id=<span class="c-str">"ali"</span>,
+    use_profile=<span class="c-fn">True</span>,  <span class="c-cmt"># Cognitive Profile</span>
+)
+
+chain = ConversationChain(llm=llm, memory=memory)
+chain.predict(input=<span class="c-str">"I deployed on Railway"</span>)
+
+<span class="c-cmt"># Next call — Mengram provides relevant context</span>
+<span class="c-cmt"># from semantic + episodic + procedural memory</span>
+chain.predict(input=<span class="c-str">"How did my deploy go?"</span>)
+<span class="c-cmt"># → Memory: facts, the deployment event, deploy workflow</span></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-num">3</div>
+                        <div>
+                            <h4>Or use with LCEL (recommended)</h4>
+                            <div class="code-box">
+                                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<pre><span class="c-kw">from</span> <span class="c-fn">mengram.integrations.langchain</span> <span class="c-kw">import</span> MengramChatMessageHistory
+<span class="c-kw">from</span> <span class="c-fn">langchain_core.runnables.history</span> <span class="c-kw">import</span> RunnableWithMessageHistory
+
+chain_with_memory = RunnableWithMessageHistory(
+    chain,
+    <span class="c-kw">lambda</span> sid: MengramChatMessageHistory(
+        api_key=<span class="c-str">"your-api-key"</span>,
+        session_id=sid,
+        user_id=<span class="c-str">"ali"</span>,
+    ),
+    input_messages_key=<span class="c-str">"input"</span>,
+    history_messages_key=<span class="c-str">"history"</span>,
+)</pre>
                             </div>
                         </div>
                     </div>
@@ -944,6 +1010,12 @@ profile = m.get_profile(<span class="c-str">"ali"</span>)
                             <td style="text-align:center;padding:10px;">❌</td>
                         </tr>
                         <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding:10px 16px;">LangChain Integration</td>
+                            <td style="text-align:center;padding:10px;">✅</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                            <td style="text-align:center;padding:10px;">❌</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border);">
                             <td style="padding:10px 16px;">Python & JS SDK</td>
                             <td style="text-align:center;padding:10px;">✅</td>
                             <td style="text-align:center;padding:10px;">✅</td>
@@ -983,7 +1055,7 @@ profile = m.get_profile(<span class="c-str">"ali"</span>)
         <!-- Footer -->
         <footer>
             <p>
-                Mengram — human-like memory for AI · v2.5.2
+                Mengram — human-like memory for AI · v2.5.3
                 &nbsp;·&nbsp;
                 <a href="https://github.com/alibaizhanov/mengram">GitHub</a>
                 &nbsp;·&nbsp;

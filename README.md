@@ -26,6 +26,7 @@
 | AI Reflections | ✅ | ❌ | ❌ |
 | Webhooks | ✅ | ✅ | ✅ |
 | MCP Server | ✅ Claude Desktop, Cursor, Windsurf | ✅ | ❌ |
+| **LangChain Integration** | ✅ | ❌ | ❌ |
 | Python & JS SDK | ✅ | ✅ | ✅ |
 | Self-hostable | ✅ | ✅ | ✅ |
 | **Price** | **Free** | $19-249/mo | Enterprise |

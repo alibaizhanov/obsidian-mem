@@ -102,6 +102,7 @@ The only AI memory API with 3 memory types. Your AI remembers facts, events, and
 - **Procedure Feedback** — AI learns which workflows succeed
 - **Memory Agents** — autonomous cleanup, pattern detection, weekly digests
 - **Team Sharing** — shared memory across team members
+- **LangChain** — drop-in replacement for ConversationBufferMemory
 
 ### Authentication
 All endpoints require `Authorization: Bearer YOUR_API_KEY` header.
@@ -115,7 +116,7 @@ results = m.search_all("deployment")  # semantic + episodic + procedural
 profile = m.get_profile("ali")        # instant system prompt
 ```
         """,
-        version="2.5.2",
+        version="2.5.3",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=[
@@ -623,7 +624,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
         return {
             "status": "ok",
-            "version": "2.5.2",
+            "version": "2.5.3",
             "cache": cache_stats,
             "connection": pool_info,
         }
@@ -762,9 +763,9 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                             metadata=metadata if metadata else None,
                             expires_at=req.expiration_date,
                         )
-                        # Embed episode
+                        # Embed episode (truncate to 2000 chars for embedder safety)
                         if embedder:
-                            ep_text = f"{ep.summary}. {ep.context or ''} {ep.outcome or ''}"
+                            ep_text = f"{ep.summary}. {ep.context or ''} {ep.outcome or ''}"[:2000]
                             ep_embs = embedder.embed_batch([ep_text])
                             if ep_embs:
                                 store.save_episode_embedding(episode_id, ep_text, ep_embs[0])

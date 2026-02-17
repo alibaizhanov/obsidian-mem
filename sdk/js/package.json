@@ -1,6 +1,6 @@
 {
   "name": "mengram-ai",
-  "version": "2.5.2",
+  "version": "2.5.3",
   "description": "Human-like memory for AI — semantic, episodic & procedural memory. Cognitive Profile, unified search, memory agents. Free Mem0 alternative.",
   "main": "index.js",
   "types": "index.d.ts",

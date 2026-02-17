@@ -1,47 +1,30 @@
 """
-Mengram LangChain Integration — drop-in persistent memory for LangChain.
+Mengram × LangChain Integration
 
-Two classes:
+Drop-in replacement for LangChain's memory and retrieval components.
+Uses Mengram's 3 memory types (semantic, episodic, procedural) as backend.
 
-1. MengramChatMessageHistory — standard BaseChatMessageHistory for LCEL/RunnableWithMessageHistory.
-   Stores messages and extracts knowledge into Mengram automatically.
+Quick Start:
+    pip install mengram-ai langchain-core
 
-2. MengramMemory — returns rich structured context (semantic + episodic + procedural)
-   as memory variables. Drop-in replacement for ConversationBufferMemory.
-
-Usage (LCEL — recommended):
-
+Usage with RunnableWithMessageHistory (modern):
     from mengram.integrations.langchain import MengramChatMessageHistory
 
-    history = MengramChatMessageHistory(api_key="om-...", session_id="session-1", user_id="ali")
+    history = MengramChatMessageHistory(api_key="om-...", user_id="ali")
+    chain_with_history = RunnableWithMessageHistory(chain, lambda sid: history)
 
-    from langchain_core.runnables.history import RunnableWithMessageHistory
-    chain_with_memory = RunnableWithMessageHistory(
-        chain,
-        lambda session_id: MengramChatMessageHistory(
-            api_key="om-...", session_id=session_id, user_id="ali"
-        ),
-        input_messages_key="input",
-        history_messages_key="history",
-    )
+Usage as Retriever (RAG replacement):
+    from mengram.integrations.langchain import MengramRetriever
 
-Usage (legacy ConversationChain):
+    retriever = MengramRetriever(api_key="om-...", user_id="ali")
+    docs = retriever.invoke("deployment issues")
+    # → Documents from all 3 memory types
 
-    from mengram.integrations.langchain import MengramMemory
+Usage with Cognitive Profile:
+    from mengram.integrations.langchain import get_mengram_profile_prompt
 
-    memory = MengramMemory(api_key="om-...", user_id="ali")
-    chain = ConversationChain(llm=llm, memory=memory)
-    chain.predict(input="I deployed my app on Railway")
-    # Next call — Mengram provides relevant context from all 3 memory types
-    chain.predict(input="How did my last deployment go?")
-
-Usage (Cognitive Profile — instant personalization):
-
-    from mengram.integrations.langchain import MengramMemory
-
-    memory = MengramMemory(api_key="om-...", user_id="ali", use_profile=True)
-    # memory.load_memory_variables({}) returns the full Cognitive Profile
-    # as system context — who the user is, recent events, known workflows
+    system = get_mengram_profile_prompt(api_key="om-...", user_id="ali")
+    chain = prompt | llm  # system prompt auto-personalized
 """
 
 from __future__ import annotations
@@ -51,338 +34,409 @@ from typing import Optional, Sequence
 
 logger = logging.getLogger("mengram.langchain")
 
-# ---- Lazy imports to avoid hard dependency on langchain ----
 
-
-def _import_langchain():
+def _check_langchain():
     try:
-        from langchain_core.chat_history import BaseChatMessageHistory
-        from langchain_core.messages import (
-            AIMessage,
-            BaseMessage,
-            HumanMessage,
-            SystemMessage,
-        )
-
-        return BaseChatMessageHistory, BaseMessage, HumanMessage, AIMessage, SystemMessage
+        import langchain_core
+        return True
     except ImportError:
         raise ImportError(
-            "LangChain is required for this integration. "
-            "Install it with: pip install langchain-core"
+            "LangChain integration requires langchain-core. "
+            "Install with: pip install langchain-core"
         )
 
 
-def _get_mengram_client(api_key: str, base_url: str = None):
-    """Create Mengram client."""
-    try:
-        from mengram.cloud.client import CloudMemory
-
-        kwargs = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        return CloudMemory(**kwargs)
-    except ImportError:
-        raise ImportError(
-            "Mengram SDK is required. Install it with: pip install mengram-ai"
-        )
+def _get_client(api_key: str, url: str = "https://mengram.io"):
+    from mengram.cloud.client import CloudMemory
+    return CloudMemory(api_key=api_key, url=url)
 
 
-# =============================================================
-# 1. MengramChatMessageHistory — standard LCEL integration
-# =============================================================
-
+# =====================================================
+# 1. Chat Message History
+# =====================================================
 
 class MengramChatMessageHistory:
-    """LangChain BaseChatMessageHistory backed by Mengram.
-
-    Stores chat messages and automatically extracts knowledge (semantic,
-    episodic, procedural) into Mengram's memory system.
-
-    Works with RunnableWithMessageHistory for LCEL chains.
+    """
+    LangChain-compatible chat message history backed by Mengram.
+    
+    Every time messages are added, Mengram's LLM extraction runs in the 
+    background — automatically extracting facts, events, and workflows 
+    into semantic, episodic, and procedural memory.
+    
+    Usage:
+        from mengram.integrations.langchain import MengramChatMessageHistory
+        from langchain_core.runnables.history import RunnableWithMessageHistory
+        
+        def get_history(session_id: str):
+            return MengramChatMessageHistory(
+                api_key="om-...", 
+                user_id=session_id,
+            )
+        
+        chain_with_history = RunnableWithMessageHistory(
+            chain, get_history,
+            input_messages_key="input",
+            history_messages_key="history",
+        )
     """
 
     def __init__(
         self,
         api_key: str,
-        session_id: str = "default",
         user_id: str = "default",
-        base_url: str = None,
-        auto_extract: bool = True,
-        extract_every: int = 4,
+        url: str = "https://mengram.io",
+        agent_id: Optional[str] = None,
+        app_id: Optional[str] = None,
+        run_id: Optional[str] = None,
     ):
-        """
-        Args:
-            api_key: Mengram API key
-            session_id: Session identifier (maps to run_id)
-            user_id: User identifier
-            base_url: Custom API URL (default: https://mengram.io)
-            auto_extract: Automatically extract knowledge on add (default True)
-            extract_every: Extract after every N messages (default 4)
-        """
-        BaseChatMessageHistory, _, _, _, _ = _import_langchain()
-        self._base_cls = BaseChatMessageHistory
-
-        self.client = _get_mengram_client(api_key, base_url)
-        self.session_id = session_id
+        _check_langchain()
+        self.client = _get_client(api_key, url)
         self.user_id = user_id
-        self.auto_extract = auto_extract
-        self.extract_every = extract_every
-
+        self.agent_id = agent_id
+        self.app_id = app_id
+        self.run_id = run_id
         self._messages: list = []
-        self._pending: list = []  # Messages not yet extracted
-        self._msg_count = 0
 
     @property
     def messages(self):
-        """Return all messages in this session."""
-        _, BaseMessage, _, _, _ = _import_langchain()
+        from langchain_core.messages import HumanMessage, AIMessage
         return list(self._messages)
 
-    def add_messages(self, messages: Sequence) -> None:
-        """Add messages and optionally extract knowledge."""
-        self._messages.extend(messages)
-        self._pending.extend(messages)
-        self._msg_count += len(messages)
-
-        if self.auto_extract and self._msg_count >= self.extract_every:
-            self._extract_pending()
-            self._msg_count = 0
-
     def add_message(self, message) -> None:
-        """Add a single message."""
-        self.add_messages([message])
+        self._messages.append(message)
 
-    def clear(self) -> None:
-        """Clear session messages (does not delete extracted memories)."""
-        self._messages = []
-        self._pending = []
-        self._msg_count = 0
+    def add_messages(self, messages: Sequence) -> None:
+        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
-    def _extract_pending(self):
-        """Send pending messages to Mengram for knowledge extraction."""
-        if not self._pending:
-            return
+        self._messages.extend(messages)
 
-        _, _, HumanMessage, AIMessage, _ = _import_langchain()
-
-        # Convert LangChain messages to Mengram format
+        # Convert to Mengram format and send for extraction
         mengram_messages = []
-        for msg in self._pending:
+        for msg in messages:
             if isinstance(msg, HumanMessage):
                 mengram_messages.append({"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
                 mengram_messages.append({"role": "assistant", "content": msg.content})
+            elif isinstance(msg, SystemMessage):
+                continue
             else:
                 mengram_messages.append({"role": "user", "content": str(msg.content)})
 
-        try:
-            self.client.add(
-                mengram_messages,
-                user_id=self.user_id,
-                run_id=self.session_id,
-            )
-            logger.info(f"📝 Extracted {len(mengram_messages)} messages to Mengram")
-        except Exception as e:
-            logger.error(f"⚠️ Mengram extraction failed: {e}")
+        if mengram_messages:
+            try:
+                self.client.add(
+                    mengram_messages,
+                    user_id=self.user_id,
+                    agent_id=self.agent_id,
+                    app_id=self.app_id,
+                    run_id=self.run_id,
+                )
+                logger.debug(f"Sent {len(mengram_messages)} messages to Mengram")
+            except Exception as e:
+                logger.warning(f"Failed to send to Mengram: {e}")
 
-        self._pending = []
+    def add_user_message(self, message: str) -> None:
+        from langchain_core.messages import HumanMessage
+        self.add_message(HumanMessage(content=message))
 
-    def flush(self):
-        """Force extract any pending messages now."""
-        self._extract_pending()
+    def add_ai_message(self, message: str) -> None:
+        from langchain_core.messages import AIMessage
+        self.add_message(AIMessage(content=message))
+
+    def clear(self) -> None:
+        self._messages.clear()
 
 
-# =============================================================
-# 2. MengramMemory — rich context memory for ConversationChain
-# =============================================================
+# =====================================================
+# 2. Retriever — searches all 3 memory types
+# =====================================================
 
-
-class MengramMemory:
-    """LangChain-compatible memory that returns rich context from Mengram.
-
-    Instead of returning raw message history, returns relevant knowledge
-    from all 3 memory types (semantic, episodic, procedural).
-
-    Drop-in replacement for ConversationBufferMemory with superpowers:
-    - Persistent across sessions
-    - Semantic search (returns relevant context, not just recent)
-    - Episodic memory (events, decisions)
-    - Procedural memory (learned workflows)
-    - Cognitive Profile (full user context)
+class MengramRetriever:
     """
-
-    # LangChain memory interface
-    memory_key: str = "history"
-    input_key: str = "input"
-    output_key: str = "output"
-    return_messages: bool = False
+    LangChain-compatible retriever that searches across all 3 Mengram memory types.
+    
+    Returns Documents with metadata indicating memory_type (semantic/episodic/procedural).
+    Drop-in replacement for any LangChain retriever — replaces RAG with memory.
+    
+    Usage:
+        from mengram.integrations.langchain import MengramRetriever
+        
+        retriever = MengramRetriever(api_key="om-...", user_id="ali")
+        
+        # Use in a chain
+        from langchain_core.runnables import RunnablePassthrough
+        chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+        )
+        
+        # Or use directly
+        docs = retriever.invoke("deployment problems")
+        for doc in docs:
+            print(doc.metadata["memory_type"], doc.page_content)
+    """
 
     def __init__(
         self,
         api_key: str,
         user_id: str = "default",
-        base_url: str = None,
-        memory_key: str = "history",
-        input_key: str = "input",
-        output_key: str = "output",
-        return_messages: bool = False,
-        use_profile: bool = False,
-        search_top_k: int = 5,
+        url: str = "https://mengram.io",
+        top_k: int = 5,
+        memory_types: Optional[list[str]] = None,
     ):
         """
         Args:
             api_key: Mengram API key
-            user_id: User identifier
-            base_url: Custom API URL
-            memory_key: Key for memory variables (default "history")
-            input_key: Key for input in chain (default "input")
-            output_key: Key for output in chain (default "output")
-            return_messages: Return as Message objects (default False = string)
-            use_profile: Use Cognitive Profile for context (default False)
-            search_top_k: Number of search results per type (default 5)
+            user_id: User to search memories for
+            url: Mengram API URL
+            top_k: Max results per memory type
+            memory_types: Which types to search. Default: all 3.
+                Options: ["semantic", "episodic", "procedural"]
         """
-        self.client = _get_mengram_client(api_key, base_url)
+        _check_langchain()
+        self.client = _get_client(api_key, url)
         self.user_id = user_id
-        self.memory_key = memory_key
-        self.input_key = input_key
-        self.output_key = output_key
-        self.return_messages = return_messages
-        self.use_profile = use_profile
-        self.search_top_k = search_top_k
+        self.top_k = top_k
+        self.memory_types = memory_types or ["semantic", "episodic", "procedural"]
 
-        self._buffer: list = []  # Recent messages for extraction
+    def invoke(self, query: str, **kwargs) -> list:
+        """Search Mengram and return LangChain Documents."""
+        return self._get_relevant_documents(query)
 
-    @property
-    def memory_variables(self) -> list[str]:
-        """Keys this memory provides to the chain."""
-        return [self.memory_key]
+    def _get_relevant_documents(self, query: str) -> list:
+        from langchain_core.documents import Document
 
-    def load_memory_variables(self, inputs: dict) -> dict:
-        """Load relevant context from Mengram based on current input.
-
-        This is where the magic happens — instead of returning raw history,
-        we search Mengram for relevant knowledge across all 3 memory types.
-        """
-        # Get the current user input to search for relevant context
-        query = inputs.get(self.input_key, "")
-
-        if self.use_profile:
-            return self._load_profile_context(query)
-
-        return self._load_search_context(query)
-
-    def _load_search_context(self, query: str) -> dict:
-        """Search all 3 memory types for relevant context."""
-        if not query:
-            return {self.memory_key: "" if not self.return_messages else []}
+        docs = []
 
         try:
-            results = self.client.search_all(query, user_id=self.user_id)
+            results = self.client.search_all(query, limit=self.top_k)
         except Exception as e:
-            logger.error(f"⚠️ Mengram search failed: {e}")
-            return {self.memory_key: "" if not self.return_messages else []}
+            logger.warning(f"Mengram search failed: {e}")
+            return docs
 
-        # Build context string from all 3 types
-        parts = []
+        # Semantic results
+        if "semantic" in self.memory_types:
+            for r in results.get("semantic", []):
+                facts = r.get("facts", [])
+                knowledge = r.get("knowledge", [])
+                
+                content_parts = []
+                if facts:
+                    content_parts.append(f"{r.get('entity', 'Unknown')}: {'; '.join(facts)}")
+                for k in knowledge:
+                    content_parts.append(
+                        f"[{k.get('type', '')}] {k.get('title', '')}: {k.get('content', '')}"
+                    )
+                
+                if content_parts:
+                    docs.append(Document(
+                        page_content="\n".join(content_parts),
+                        metadata={
+                            "memory_type": "semantic",
+                            "entity": r.get("entity", ""),
+                            "entity_type": r.get("type", ""),
+                            "score": r.get("score", 0),
+                            "source": "mengram",
+                        }
+                    ))
 
-        # Semantic — facts and knowledge
-        semantic = results.get("semantic", [])
-        if semantic:
-            facts = []
-            for r in semantic[:self.search_top_k]:
-                entity = r.get("entity", "")
-                for f in r.get("facts", [])[:5]:
-                    facts.append(f"{entity}: {f}")
-            if facts:
-                parts.append("Known facts:\n" + "\n".join(f"- {f}" for f in facts))
-
-        # Episodic — relevant events
-        episodic = results.get("episodic", [])
-        if episodic:
-            events = []
-            for ep in episodic[:3]:
-                line = ep.get("summary", "")
+        # Episodic results
+        if "episodic" in self.memory_types:
+            for ep in results.get("episodic", []):
+                content = f"Event: {ep.get('summary', '')}"
+                if ep.get("context"):
+                    content += f"\nDetails: {ep['context']}"
                 if ep.get("outcome"):
-                    line += f" → {ep['outcome']}"
-                events.append(line)
-            if events:
-                parts.append("Relevant events:\n" + "\n".join(f"- {e}" for e in events))
+                    content += f"\nOutcome: {ep['outcome']}"
 
-        # Procedural — relevant workflows
-        procedural = results.get("procedural", [])
-        if procedural:
-            procs = []
-            for pr in procedural[:2]:
-                name = pr.get("name", "")
-                steps = pr.get("steps", [])
-                steps_str = " → ".join(s.get("action", "") for s in steps[:5])
-                success = pr.get("success_count", 0)
-                procs.append(f"{name}: {steps_str} (used {success}x)")
-            if procs:
-                parts.append("Known workflows:\n" + "\n".join(f"- {p}" for p in procs))
+                docs.append(Document(
+                    page_content=content,
+                    metadata={
+                        "memory_type": "episodic",
+                        "participants": ep.get("participants", []),
+                        "emotional_valence": ep.get("emotional_valence", "neutral"),
+                        "importance": ep.get("importance", 0.5),
+                        "score": ep.get("score", 0),
+                        "created_at": ep.get("created_at", ""),
+                        "source": "mengram",
+                    }
+                ))
 
-        context = "\n\n".join(parts) if parts else ""
+        # Procedural results
+        if "procedural" in self.memory_types:
+            for pr in results.get("procedural", []):
+                steps_text = "\n".join(
+                    f"  {s.get('step', i+1)}. {s.get('action', '')} — {s.get('detail', '')}"
+                    for i, s in enumerate(pr.get("steps", []))
+                )
+                content = f"Procedure: {pr.get('name', '')}"
+                if pr.get("trigger_condition"):
+                    content += f"\nWhen: {pr['trigger_condition']}"
+                if steps_text:
+                    content += f"\nSteps:\n{steps_text}"
 
-        if self.return_messages:
-            _, _, _, _, SystemMessage = _import_langchain()
-            if context:
-                return {self.memory_key: [SystemMessage(content=context)]}
-            return {self.memory_key: []}
+                docs.append(Document(
+                    page_content=content,
+                    metadata={
+                        "memory_type": "procedural",
+                        "procedure_name": pr.get("name", ""),
+                        "success_count": pr.get("success_count", 0),
+                        "fail_count": pr.get("fail_count", 0),
+                        "score": pr.get("score", 0),
+                        "source": "mengram",
+                    }
+                ))
 
-        return {self.memory_key: context}
+        docs.sort(key=lambda d: d.metadata.get("score", 0), reverse=True)
+        return docs
 
-    def _load_profile_context(self, query: str) -> dict:
-        """Use Cognitive Profile for full user context."""
-        try:
-            profile = self.client.get_profile(self.user_id, force=False)
-            context = profile.get("system_prompt", "")
-        except Exception as e:
-            logger.error(f"⚠️ Mengram profile failed: {e}")
-            context = ""
 
-        # Optionally append search results for the specific query
-        if query and context:
-            search_context = self._load_search_context(query)
-            search_text = search_context.get(self.memory_key, "")
-            if isinstance(search_text, str) and search_text:
-                context = f"{context}\n\nRelevant to current question:\n{search_text}"
+# =====================================================
+# 3. Cognitive Profile — instant system prompt
+# =====================================================
 
-        if self.return_messages:
-            _, _, _, _, SystemMessage = _import_langchain()
-            if context:
-                return {self.memory_key: [SystemMessage(content=context)]}
-            return {self.memory_key: []}
+def get_mengram_profile_prompt(
+    api_key: str,
+    user_id: str = "default",
+    url: str = "https://mengram.io",
+    force: bool = False,
+) -> str:
+    """
+    Get a Cognitive Profile as a system prompt string.
+    
+    One API call generates a ready-to-use system prompt from all 3 memory types.
+    Cached for 1 hour on the server side.
+    
+    Usage:
+        from mengram.integrations.langchain import get_mengram_profile_prompt
+        from langchain_core.prompts import ChatPromptTemplate
+        
+        system_prompt = get_mengram_profile_prompt(api_key="om-...", user_id="ali")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt + "\\n\\n{instructions}"),
+            ("human", "{input}"),
+        ])
+        
+        chain = prompt | llm
+        chain.invoke({"instructions": "Be helpful", "input": "What should I work on?"})
+    
+    Returns:
+        System prompt string, or empty string if no data.
+    """
+    client = _get_client(api_key, url)
+    try:
+        profile = client.get_profile(user_id, force=force)
+        return profile.get("system_prompt", "")
+    except Exception as e:
+        logger.warning(f"Failed to get Mengram profile: {e}")
+        return ""
 
-        return {self.memory_key: context}
 
-    def save_context(self, inputs: dict, outputs: dict) -> None:
-        """Save conversation turn to Mengram for extraction."""
-        user_input = inputs.get(self.input_key, "")
-        ai_output = outputs.get(self.output_key, "")
+def create_mengram_profile_prompt(
+    api_key: str,
+    user_id: str = "default",
+    url: str = "https://mengram.io",
+    additional_instructions: str = "",
+):
+    """
+    Create a LangChain ChatPromptTemplate with Cognitive Profile baked in.
+    
+    Usage:
+        from mengram.integrations.langchain import create_mengram_profile_prompt
+        
+        prompt = create_mengram_profile_prompt(
+            api_key="om-...",
+            user_id="ali",
+            additional_instructions="Be concise. Focus on actionable advice.",
+        )
+        
+        chain = prompt | llm
+        chain.invoke({"input": "What should I prioritize this week?"})
+    """
+    _check_langchain()
+    from langchain_core.prompts import ChatPromptTemplate
 
-        if not user_input:
-            return
+    profile_text = get_mengram_profile_prompt(api_key, user_id, url)
+    
+    system_parts = []
+    if profile_text:
+        system_parts.append(profile_text)
+    if additional_instructions:
+        system_parts.append(additional_instructions)
+    
+    system_message = "\n\n".join(system_parts) if system_parts else "You are a helpful assistant."
 
-        self._buffer.append({"role": "user", "content": user_input})
-        if ai_output:
-            self._buffer.append({"role": "assistant", "content": ai_output})
+    return ChatPromptTemplate.from_messages([
+        ("system", system_message),
+        ("placeholder", "{history}"),
+        ("human", "{input}"),
+    ])
 
-        # Extract every 2 turns (4 messages)
-        if len(self._buffer) >= 4:
-            self._flush()
 
-    def _flush(self):
-        """Send buffered messages to Mengram."""
-        if not self._buffer:
-            return
-        try:
-            self.client.add(self._buffer, user_id=self.user_id)
-            logger.info(f"📝 Sent {len(self._buffer)} messages to Mengram")
-        except Exception as e:
-            logger.error(f"⚠️ Mengram add failed: {e}")
-        self._buffer = []
+# =====================================================
+# 4. All-in-one: memory + retrieval + profile
+# =====================================================
 
-    def clear(self) -> None:
-        """Flush pending and clear buffer."""
-        self._flush()
-        self._buffer = []
+def create_mengram_chain(
+    llm,
+    api_key: str,
+    user_id: str = "default",
+    url: str = "https://mengram.io",
+    additional_instructions: str = "",
+):
+    """
+    Create a fully personalized LangChain chain with:
+    - Cognitive Profile as system prompt
+    - Mengram retriever for context (all 3 memory types)
+    - Automatic memory formatting
+    
+    Usage:
+        from mengram.integrations.langchain import create_mengram_chain
+        from langchain_openai import ChatOpenAI
+        
+        llm = ChatOpenAI(model="gpt-4o-mini")
+        chain = create_mengram_chain(llm, api_key="om-...", user_id="ali")
+        
+        response = chain.invoke({"input": "How do I deploy?"})
+        # → Uses Cognitive Profile + searches episodic/procedural memory
+        #   for deployment-related events and workflows
+    """
+    _check_langchain()
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.runnables import RunnableLambda
+    from langchain_core.output_parsers import StrOutputParser
+
+    profile_text = get_mengram_profile_prompt(api_key, user_id, url)
+    system = profile_text or "You are a helpful assistant."
+    if additional_instructions:
+        system += f"\n\n{additional_instructions}"
+
+    retriever = MengramRetriever(api_key=api_key, user_id=user_id, url=url, top_k=3)
+
+    def format_context(docs):
+        if not docs:
+            return "No relevant memories found."
+        parts = []
+        for doc in docs:
+            mtype = doc.metadata.get("memory_type", "unknown")
+            parts.append(f"[{mtype}] {doc.page_content}")
+        return "\n\n".join(parts)
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system + "\n\nRelevant memory context:\n{context}"),
+        ("human", "{input}"),
+    ])
+
+    chain = (
+        {
+            "context": (lambda x: x["input"]) | retriever | RunnableLambda(format_context),
+            "input": lambda x: x["input"],
+        }
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    return chain
