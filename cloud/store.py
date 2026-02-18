@@ -3543,7 +3543,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                        source_id: str = None, fire_at=None) -> int:
         """Create a new smart trigger."""
         self.ensure_triggers_table()
-        with self._cursor() as cur:
+        with self._cursor(dict_cursor=True) as cur:
             # Avoid duplicate triggers with same title for same user
             cur.execute("""
                 SELECT id FROM memory_triggers
@@ -3560,7 +3560,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             """, (user_id, trigger_type, title, detail, source_type,
                   source_id, fire_at))
             row = cur.fetchone()
-            return row["id"] if row else row[0] if row else -1
+            return row["id"] if row else -1
 
     def get_pending_triggers(self, user_id: str = None) -> list:
         """Get triggers that are ready to fire."""
