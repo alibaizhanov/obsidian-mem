@@ -118,8 +118,7 @@ Set in `~/.openclaw/openclaw.json`:
       "mengram-memory": {
         "enabled": true,
         "env": {
-          "MENGRAM_API_KEY": "om-your-api-key-here",
-          "MENGRAM_USER_ID": "your-user-id"
+          "MENGRAM_API_KEY": "om-your-api-key-here"
         }
       }
     }
@@ -134,7 +133,7 @@ Get your free API key at https://mengram.io
 - **External endpoint:** `https://mengram.io/v1/*` (only)
 - **Data sent:** conversation text for memory extraction, search queries
 - **Data stored:** extracted facts, events, and procedures on Mengram servers (PostgreSQL + pgvector)
-- **Environment variables accessed:** `MENGRAM_API_KEY`, `MENGRAM_USER_ID` (only)
+- **Environment variables accessed:** `MENGRAM_API_KEY` (only)
 - **Local files read/written:** none
 
 **Trust Statement:** By using this skill, conversation data is sent to mengram.io for memory extraction and storage. Only install if you trust Mengram with your conversation data. Mengram is open-source: https://github.com/AiBaizhanov/mengram

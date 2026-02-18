@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SECURITY MANIFEST:
-# Environment variables accessed: MENGRAM_API_KEY, MENGRAM_USER_ID (only)
+# Environment variables accessed: MENGRAM_API_KEY (only)
 # External endpoints called: https://mengram.io/v1/search/all (only)
 # Local files read: none
 # Local files written: none
@@ -8,7 +8,6 @@ set -euo pipefail
 
 MENGRAM_BASE_URL="${MENGRAM_BASE_URL:-https://mengram.io}"
 API_KEY="${MENGRAM_API_KEY:-}"
-USER_ID="${MENGRAM_USER_ID:-default}"
 
 if [ -z "$API_KEY" ]; then
   echo "ERROR: MENGRAM_API_KEY not set. Get your free key at https://mengram.io"
@@ -28,7 +27,7 @@ RESPONSE=$(curl -s -w "\n%{http_code}" \
   -X POST "${MENGRAM_BASE_URL}/v1/search/all" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"query\": ${SAFE_QUERY}, \"user_id\": \"${USER_ID}\", \"limit\": 5}")
+  -d "{\"query\": ${SAFE_QUERY}, \"limit\": 5}")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')

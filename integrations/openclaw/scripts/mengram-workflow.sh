@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SECURITY MANIFEST:
-# Environment variables accessed: MENGRAM_API_KEY, MENGRAM_USER_ID (only)
+# Environment variables accessed: MENGRAM_API_KEY (only)
 # External endpoints called: https://mengram.io/v1/add (only)
 # Local files read: none
 # Local files written: none
@@ -8,29 +8,36 @@ set -euo pipefail
 
 MENGRAM_BASE_URL="${MENGRAM_BASE_URL:-https://mengram.io}"
 API_KEY="${MENGRAM_API_KEY:-}"
-USER_ID="${MENGRAM_USER_ID:-default}"
 
 if [ -z "$API_KEY" ]; then
   echo "ERROR: MENGRAM_API_KEY not set. Get your free key at https://mengram.io"
   exit 1
 fi
 
-WORKFLOW="${1:-}"
-if [ -z "$WORKFLOW" ]; then
-  echo "Usage: mengram-workflow.sh \"description of completed workflow with steps\""
-  echo "Example: mengram-workflow.sh \"Deployed app: 1) Ran tests 2) Built Docker image 3) Pushed to registry 4) Updated Kubernetes\""
+WORKFLOW_NAME="${1:-}"
+STEPS="${2:-}"
+OUTCOME="${3:-success}"
+
+if [ -z "$WORKFLOW_NAME" ] || [ -z "$STEPS" ]; then
+  echo "Usage: mengram-workflow.sh \"workflow name\" \"step1; step2; step3\" [success|failure]"
   exit 1
 fi
 
-# Sanitize for JSON
-SAFE_WORKFLOW=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$WORKFLOW")
+# Build workflow description as assistant message (triggers procedural extraction)
+SAFE_DESC=$(python3 -c "
+import json, sys
+name = sys.argv[1]
+steps = sys.argv[2]
+outcome = sys.argv[3]
+desc = f'Completed workflow: {name}. Steps taken: {steps}. Result: {outcome}.'
+print(json.dumps(desc))
+" "$WORKFLOW_NAME" "$STEPS" "$OUTCOME")
 
-# Send as assistant message so extraction pipeline identifies it as a completed workflow
 RESPONSE=$(curl -s -w "\n%{http_code}" \
   -X POST "${MENGRAM_BASE_URL}/v1/add" \
   -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"messages\": [{\"role\": \"assistant\", \"content\": \"I completed the following workflow: \"}, {\"role\": \"assistant\", \"content\": ${SAFE_WORKFLOW}}], \"user_id\": \"${USER_ID}\"}")
+  -d "{\"messages\": [{\"role\": \"assistant\", \"content\": ${SAFE_DESC}}]}")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 BODY=$(echo "$RESPONSE" | sed '$d')
@@ -41,4 +48,4 @@ if [ "$HTTP_CODE" -ne 200 ] && [ "$HTTP_CODE" -ne 202 ]; then
   exit 1
 fi
 
-echo "Workflow saved as a procedure. It will appear in future memory searches with success/failure tracking."
+echo "Workflow '${WORKFLOW_NAME}' saved. Mengram will learn this procedure for future use."

@@ -45,8 +45,7 @@ npx clawdhub@latest install mengram-memory
       "mengram-memory": {
         "enabled": true,
         "env": {
-          "MENGRAM_API_KEY": "om-your-api-key-here",
-          "MENGRAM_USER_ID": "your-name"
+          "MENGRAM_API_KEY": "om-your-api-key-here"
         }
       }
     }
