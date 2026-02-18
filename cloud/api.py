@@ -70,6 +70,10 @@ class SearchRequest(BaseModel):
     app_id: str = None
     limit: int = 5
 
+class FeedbackRequest(BaseModel):
+    context: str = None         # What went wrong (triggers evolution on failure)
+    failed_at_step: int = None  # Which step failed
+
 class SignupRequest(BaseModel):
     email: str
 
@@ -836,6 +840,18 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                         logger.info(f"🧠 Smart triggers created: {triggers_created} for {user_id}")
                 except Exception as e:
                     logger.error(f"⚠️ Smart triggers failed: {e}")
+
+                # ---- Experience-Driven Procedures: detect patterns in episodes ----
+                if episodes_created > 0:
+                    try:
+                        from cloud.evolution import EvolutionEngine
+                        evo_engine = EvolutionEngine(store, embedder, extractor.llm)
+                        evo_result = evo_engine.detect_and_create_from_episodes(user_id)
+                        if evo_result:
+                            logger.info(f"🔄 Auto-created procedure '{evo_result['name']}' "
+                                       f"from {evo_result['source_episode_count']} episodes")
+                    except Exception as e:
+                        logger.error(f"⚠️ Experience-driven procedure detection failed: {e}")
             except Exception as e:
                 logger.error(f"❌ Background add failed: {e}")
                 store.fail_job(job_id, str(e))
@@ -1427,13 +1443,72 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     @app.patch("/v1/procedures/{procedure_id}/feedback", tags=["Procedural Memory"])
     async def procedure_feedback(
         procedure_id: str, success: bool = True,
+        body: FeedbackRequest = None,
         user_id: str = Depends(auth)
     ):
-        """Record success/failure feedback for a procedure. Helps the system learn what works."""
+        """Record success/failure feedback for a procedure.
+
+        On failure with context, triggers experience-driven evolution:
+        creates a linked failure episode and evolves the procedure to a new version.
+        """
         result = store.procedure_feedback(user_id, procedure_id, success)
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
+
+        # Experience-driven evolution: on failure with context, evolve the procedure
+        evolution_triggered = False
+        if not success and body and body.context:
+            import threading
+
+            def evolve_in_background():
+                try:
+                    # 1. Create a linked failure episode
+                    episode_id = store.save_episode(
+                        user_id=user_id,
+                        summary=f"Procedure '{result['name']}' failed: {body.context[:100]}",
+                        context=body.context,
+                        outcome="failure",
+                        emotional_valence="negative",
+                        importance=0.7,
+                        linked_procedure_id=procedure_id,
+                        failed_at_step=body.failed_at_step,
+                    )
+                    # Embed the failure episode
+                    embedder = get_embedder()
+                    if embedder:
+                        ep_text = f"Procedure {result['name']} failed. {body.context}"[:2000]
+                        ep_embs = embedder.embed_batch([ep_text])
+                        if ep_embs:
+                            store.save_episode_embedding(episode_id, ep_text, ep_embs[0])
+
+                    # 2. Trigger evolution
+                    from cloud.evolution import EvolutionEngine
+                    extractor = get_llm()
+                    engine = EvolutionEngine(store, embedder, extractor.llm)
+                    engine.evolve_on_failure(user_id, procedure_id, episode_id, body.context)
+                except Exception as e:
+                    logger.error(f"⚠️ Procedure evolution failed: {e}")
+
+            threading.Thread(target=evolve_in_background, daemon=True).start()
+            evolution_triggered = True
+
+        result["evolution_triggered"] = evolution_triggered
         return result
+
+    @app.get("/v1/procedures/{procedure_id}/history", tags=["Procedural Memory"])
+    async def procedure_history(procedure_id: str, user_id: str = Depends(auth)):
+        """Get version history for a procedure. Shows how it evolved over time."""
+        history = store.get_procedure_history(user_id, procedure_id)
+        if not history:
+            raise HTTPException(status_code=404, detail="procedure not found")
+        evolution = store.get_procedure_evolution(user_id, procedure_id)
+        return {"versions": history, "evolution_log": evolution}
+
+    @app.get("/v1/procedures/{procedure_id}/evolution", tags=["Procedural Memory"])
+    async def procedure_evolution(procedure_id: str, user_id: str = Depends(auth)):
+        """Get the evolution log for a procedure — what changed and why."""
+        evolution = store.get_procedure_evolution(user_id, procedure_id)
+        return {"evolution": evolution}
 
     # ---- Unified Search (all 3 memory types) ----
 

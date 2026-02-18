@@ -2257,20 +2257,23 @@ SEMANTIC MEMORY (facts about the user):
     def save_episode(self, user_id: str, summary: str, context: str = None,
                      outcome: str = None, participants: list[str] = None,
                      emotional_valence: str = "neutral", importance: float = 0.5,
-                     metadata: dict = None, expires_at: str = None) -> str:
+                     metadata: dict = None, expires_at: str = None,
+                     linked_procedure_id: str = None,
+                     failed_at_step: int = None) -> str:
         """Save an episodic memory — a specific event or interaction."""
         meta_json = json.dumps(metadata) if metadata else '{}'
         parts = participants or []
         with self._cursor() as cur:
             cur.execute(
-                """INSERT INTO episodes 
-                   (user_id, summary, context, outcome, participants, 
-                    emotional_valence, importance, metadata, expires_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                """INSERT INTO episodes
+                   (user_id, summary, context, outcome, participants,
+                    emotional_valence, importance, metadata, expires_at,
+                    linked_procedure_id, failed_at_step)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)
                    RETURNING id""",
                 (user_id, summary, context, outcome, parts,
                  emotional_valence, importance, meta_json,
-                 expires_at)
+                 expires_at, linked_procedure_id, failed_at_step)
             )
             episode_id = str(cur.fetchone()[0])
         logger.info(f"📝 Episode saved: {summary[:60]}...")
@@ -2294,7 +2297,8 @@ SEMANTIC MEMORY (facts about the user):
                      before: str = None) -> list[dict]:
         """Get episodes by time range."""
         query = """SELECT id, summary, context, outcome, participants,
-                          emotional_valence, importance, metadata, created_at
+                          emotional_valence, importance, metadata,
+                          linked_procedure_id, failed_at_step, created_at
                    FROM episodes
                    WHERE user_id = %s
                      AND (expires_at IS NULL OR expires_at > NOW())"""
@@ -2321,6 +2325,8 @@ SEMANTIC MEMORY (facts about the user):
                     "emotional_valence": row["emotional_valence"],
                     "importance": round(float(row["importance"] or 0.5), 2),
                     "metadata": row["metadata"] or {},
+                    "linked_procedure_id": str(row["linked_procedure_id"]) if row["linked_procedure_id"] else None,
+                    "failed_at_step": row["failed_at_step"],
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 })
             return results
@@ -2416,7 +2422,10 @@ SEMANTIC MEMORY (facts about the user):
     def save_procedure(self, user_id: str, name: str, trigger_condition: str = None,
                        steps: list[dict] = None, entity_names: list[str] = None,
                        source_episode_ids: list[str] = None,
-                       metadata: dict = None, expires_at: str = None) -> str:
+                       metadata: dict = None, expires_at: str = None,
+                       version: int = 1, parent_version_id: str = None,
+                       evolved_from_episode: str = None,
+                       is_current: bool = True) -> str:
         """Save or update a procedural memory — learned workflow/skill."""
         meta_json = json.dumps(metadata) if metadata else '{}'
         steps_json = json.dumps(steps or [])
@@ -2425,11 +2434,13 @@ SEMANTIC MEMORY (facts about the user):
 
         with self._cursor() as cur:
             cur.execute(
-                """INSERT INTO procedures 
+                """INSERT INTO procedures
                    (user_id, name, trigger_condition, steps, entity_names,
-                    source_episode_ids, metadata, expires_at)
-                   VALUES (%s, %s, %s, %s::jsonb, %s, %s::uuid[], %s::jsonb, %s)
-                   ON CONFLICT (user_id, name)
+                    source_episode_ids, metadata, expires_at,
+                    version, parent_version_id, evolved_from_episode, is_current)
+                   VALUES (%s, %s, %s, %s::jsonb, %s, %s::uuid[], %s::jsonb, %s,
+                           %s, %s, %s, %s)
+                   ON CONFLICT (user_id, name, version)
                    DO UPDATE SET
                        trigger_condition = COALESCE(EXCLUDED.trigger_condition, procedures.trigger_condition),
                        steps = EXCLUDED.steps,
@@ -2437,10 +2448,11 @@ SEMANTIC MEMORY (facts about the user):
                        updated_at = NOW()
                    RETURNING id""",
                 (user_id, name, trigger_condition, steps_json, entities,
-                 ep_ids if ep_ids else None, meta_json, expires_at)
+                 ep_ids if ep_ids else None, meta_json, expires_at,
+                 version, parent_version_id, evolved_from_episode, is_current)
             )
             proc_id = str(cur.fetchone()[0])
-        logger.info(f"⚙️ Procedure saved: {name}")
+        logger.info(f"⚙️ Procedure saved: {name} v{version}")
         return proc_id
 
     def save_procedure_embedding(self, procedure_id: str, chunk_text: str, embedding: list[float]):
@@ -2458,13 +2470,15 @@ SEMANTIC MEMORY (facts about the user):
             cur.execute("DELETE FROM procedure_embeddings WHERE procedure_id = %s", (procedure_id,))
 
     def get_procedures(self, user_id: str, limit: int = 20) -> list[dict]:
-        """Get all procedures for a user."""
+        """Get all current procedures for a user (latest versions only)."""
         with self._cursor(dict_cursor=True) as cur:
             cur.execute(
                 """SELECT id, name, trigger_condition, steps, entity_names,
-                          success_count, fail_count, last_used, created_at, updated_at
+                          success_count, fail_count, last_used, version,
+                          created_at, updated_at
                    FROM procedures
                    WHERE user_id = %s
+                     AND is_current = TRUE
                      AND (expires_at IS NULL OR expires_at > NOW())
                    ORDER BY updated_at DESC
                    LIMIT %s""",
@@ -2480,6 +2494,7 @@ SEMANTIC MEMORY (facts about the user):
                     "entity_names": row["entity_names"] or [],
                     "success_count": row["success_count"] or 0,
                     "fail_count": row["fail_count"] or 0,
+                    "version": row["version"] or 1,
                     "last_used": row["last_used"].isoformat() if row["last_used"] else None,
                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
@@ -2489,14 +2504,15 @@ SEMANTIC MEMORY (facts about the user):
 
     def search_procedures_vector(self, user_id: str, embedding: list[float],
                                  top_k: int = 5) -> list[dict]:
-        """Semantic search over procedural memory."""
+        """Semantic search over procedural memory (current versions only)."""
         query = """
             SELECT p.id, p.name, p.trigger_condition, p.steps, p.entity_names,
-                   p.success_count, p.fail_count, p.last_used, p.updated_at,
+                   p.success_count, p.fail_count, p.last_used, p.version, p.updated_at,
                    1 - (pe.embedding <=> %s::vector) AS score
             FROM procedure_embeddings pe
             JOIN procedures p ON p.id = pe.procedure_id
             WHERE p.user_id = %s
+              AND p.is_current = TRUE
               AND (p.expires_at IS NULL OR p.expires_at > NOW())
             ORDER BY pe.embedding <=> %s::vector
             LIMIT %s
@@ -2518,6 +2534,7 @@ SEMANTIC MEMORY (facts about the user):
                     "entity_names": row["entity_names"] or [],
                     "success_count": row["success_count"] or 0,
                     "fail_count": row["fail_count"] or 0,
+                    "version": row["version"] or 1,
                     "score": round(float(row["score"]), 4),
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                     "memory_type": "procedural",
@@ -2526,14 +2543,15 @@ SEMANTIC MEMORY (facts about the user):
 
     def search_procedures_text(self, user_id: str, query: str,
                                top_k: int = 5) -> list[dict]:
-        """BM25 text search over procedural memory."""
+        """BM25 text search over procedural memory (current versions only)."""
         sql = """
             SELECT p.id, p.name, p.trigger_condition, p.steps, p.entity_names,
-                   p.success_count, p.fail_count, p.updated_at,
+                   p.success_count, p.fail_count, p.version, p.updated_at,
                    ts_rank(pe.tsv, plainto_tsquery('english', %s)) AS score
             FROM procedure_embeddings pe
             JOIN procedures p ON p.id = pe.procedure_id
             WHERE p.user_id = %s
+              AND p.is_current = TRUE
               AND (p.expires_at IS NULL OR p.expires_at > NOW())
               AND pe.tsv @@ plainto_tsquery('english', %s)
             ORDER BY score DESC
@@ -2556,6 +2574,7 @@ SEMANTIC MEMORY (facts about the user):
                     "entity_names": row["entity_names"] or [],
                     "success_count": row["success_count"] or 0,
                     "fail_count": row["fail_count"] or 0,
+                    "version": row["version"] or 1,
                     "score": round(float(row["score"]), 4),
                     "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                     "memory_type": "procedural",
@@ -2583,6 +2602,206 @@ SEMANTIC MEMORY (facts about the user):
                 "fail_count": row["fail_count"],
                 "feedback": "success" if success else "failure",
             }
+
+    # =====================================================
+    # EXPERIENCE-DRIVEN PROCEDURES v2.7
+    # =====================================================
+
+    def get_procedure_by_id(self, user_id: str, procedure_id: str) -> dict | None:
+        """Get a single procedure by ID."""
+        with self._cursor(dict_cursor=True) as cur:
+            cur.execute(
+                """SELECT id, name, trigger_condition, steps, entity_names,
+                          success_count, fail_count, version, parent_version_id,
+                          evolved_from_episode, is_current, last_used,
+                          created_at, updated_at
+                   FROM procedures
+                   WHERE id = %s AND user_id = %s""",
+                (procedure_id, user_id)
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": str(row["id"]),
+                "name": row["name"],
+                "trigger_condition": row["trigger_condition"],
+                "steps": row["steps"] or [],
+                "entity_names": row["entity_names"] or [],
+                "success_count": row["success_count"] or 0,
+                "fail_count": row["fail_count"] or 0,
+                "version": row["version"] or 1,
+                "parent_version_id": str(row["parent_version_id"]) if row["parent_version_id"] else None,
+                "evolved_from_episode": str(row["evolved_from_episode"]) if row["evolved_from_episode"] else None,
+                "is_current": row["is_current"],
+                "last_used": row["last_used"].isoformat() if row["last_used"] else None,
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            }
+
+    def evolve_procedure(self, user_id: str, procedure_id: str,
+                         new_steps: list[dict], new_trigger: str = None,
+                         episode_id: str = None, change_type: str = "step_modified",
+                         diff: dict = None) -> str:
+        """Create a new version of a procedure (experience-driven evolution).
+
+        Marks the old version as not current, creates a new row with version+1,
+        and logs the evolution in procedure_evolution table.
+        Returns the new procedure ID.
+        """
+        old = self.get_procedure_by_id(user_id, procedure_id)
+        if not old:
+            raise ValueError(f"Procedure {procedure_id} not found")
+
+        old_version = old["version"]
+        new_version = old_version + 1
+
+        # Mark old version as not current
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE procedures SET is_current = FALSE, updated_at = NOW() WHERE id = %s",
+                (procedure_id,)
+            )
+
+        # Create new version
+        new_proc_id = self.save_procedure(
+            user_id=user_id,
+            name=old["name"],
+            trigger_condition=new_trigger or old["trigger_condition"],
+            steps=new_steps,
+            entity_names=old["entity_names"],
+            version=new_version,
+            parent_version_id=procedure_id,
+            evolved_from_episode=episode_id,
+            is_current=True,
+        )
+
+        # Log evolution
+        with self._cursor() as cur:
+            cur.execute(
+                """INSERT INTO procedure_evolution
+                   (procedure_id, episode_id, change_type, diff,
+                    version_before, version_after)
+                   VALUES (%s, %s, %s, %s::jsonb, %s, %s)""",
+                (new_proc_id, episode_id, change_type,
+                 json.dumps(diff or {}), old_version, new_version)
+            )
+
+        logger.info(f"🔄 Procedure evolved: {old['name']} v{old_version} → v{new_version}")
+        return new_proc_id
+
+    def get_procedure_history(self, user_id: str, procedure_id: str) -> list[dict]:
+        """Get all versions of a procedure by tracing the version chain.
+
+        Finds the procedure name, then returns all versions ordered by version number.
+        """
+        # First get the name from the given procedure
+        proc = self.get_procedure_by_id(user_id, procedure_id)
+        if not proc:
+            return []
+
+        with self._cursor(dict_cursor=True) as cur:
+            cur.execute(
+                """SELECT id, name, trigger_condition, steps, entity_names,
+                          success_count, fail_count, version, parent_version_id,
+                          evolved_from_episode, is_current, created_at, updated_at
+                   FROM procedures
+                   WHERE user_id = %s AND name = %s
+                   ORDER BY version ASC""",
+                (user_id, proc["name"])
+            )
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "id": str(row["id"]),
+                    "name": row["name"],
+                    "trigger_condition": row["trigger_condition"],
+                    "steps": row["steps"] or [],
+                    "entity_names": row["entity_names"] or [],
+                    "success_count": row["success_count"] or 0,
+                    "fail_count": row["fail_count"] or 0,
+                    "version": row["version"] or 1,
+                    "parent_version_id": str(row["parent_version_id"]) if row["parent_version_id"] else None,
+                    "evolved_from_episode": str(row["evolved_from_episode"]) if row["evolved_from_episode"] else None,
+                    "is_current": row["is_current"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                })
+            return results
+
+    def get_procedure_evolution(self, user_id: str, procedure_id: str) -> list[dict]:
+        """Get the evolution log for a procedure (all versions)."""
+        # Get all version IDs for this procedure name
+        proc = self.get_procedure_by_id(user_id, procedure_id)
+        if not proc:
+            return []
+
+        with self._cursor(dict_cursor=True) as cur:
+            cur.execute(
+                """SELECT pe.id, pe.procedure_id, pe.episode_id, pe.change_type,
+                          pe.diff, pe.version_before, pe.version_after, pe.created_at
+                   FROM procedure_evolution pe
+                   JOIN procedures p ON p.id = pe.procedure_id
+                   WHERE p.user_id = %s AND p.name = %s
+                   ORDER BY pe.created_at ASC""",
+                (user_id, proc["name"])
+            )
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "id": str(row["id"]),
+                    "procedure_id": str(row["procedure_id"]),
+                    "episode_id": str(row["episode_id"]) if row["episode_id"] else None,
+                    "change_type": row["change_type"],
+                    "diff": row["diff"] or {},
+                    "version_before": row["version_before"],
+                    "version_after": row["version_after"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                })
+            return results
+
+    def get_unlinked_positive_episodes(self, user_id: str, limit: int = 50) -> list[dict]:
+        """Get recent positive episodes not linked to any procedure.
+
+        Used by the evolution engine to detect patterns for auto-creating procedures.
+        """
+        with self._cursor(dict_cursor=True) as cur:
+            cur.execute(
+                """SELECT id, summary, context, outcome, participants,
+                          emotional_valence, importance, created_at
+                   FROM episodes
+                   WHERE user_id = %s
+                     AND linked_procedure_id IS NULL
+                     AND emotional_valence = 'positive'
+                     AND (expires_at IS NULL OR expires_at > NOW())
+                   ORDER BY created_at DESC
+                   LIMIT %s""",
+                (user_id, limit)
+            )
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "id": str(row["id"]),
+                    "summary": row["summary"],
+                    "context": row["context"],
+                    "outcome": row["outcome"],
+                    "participants": row["participants"] or [],
+                    "emotional_valence": row["emotional_valence"],
+                    "importance": round(float(row["importance"] or 0.5), 2),
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                })
+            return results
+
+    def link_episodes_to_procedure(self, episode_ids: list[str], procedure_id: str):
+        """Link episodes to a procedure (after auto-creating from pattern)."""
+        if not episode_ids:
+            return
+        with self._cursor() as cur:
+            cur.execute(
+                """UPDATE episodes SET linked_procedure_id = %s
+                   WHERE id = ANY(%s::uuid[])""",
+                (procedure_id, episode_ids)
+            )
 
     # =====================================================
     # MEMORY AGENTS v2.0

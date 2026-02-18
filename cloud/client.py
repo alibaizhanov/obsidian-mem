@@ -265,19 +265,62 @@ class CloudMemory:
             return resp.get("procedures", [])
 
     def procedure_feedback(self, procedure_id: str, success: bool = True,
+                           context: str = None, failed_at_step: int = None,
                            user_id: str = "default") -> dict:
         """
         Record success/failure feedback for a procedure.
-        
+
+        On failure with context, triggers experience-driven evolution:
+        the system creates a failure episode, analyzes what went wrong,
+        and evolves the procedure to a new improved version.
+
         Args:
             procedure_id: UUID of the procedure
             success: True if the procedure worked, False if it failed
-            
+            context: What went wrong (triggers evolution when success=False)
+            failed_at_step: Which step number failed (optional)
+
         Returns:
-            Updated procedure with success_count/fail_count
+            Updated procedure with success_count/fail_count and evolution_triggered flag
         """
+        data = None
+        if context is not None:
+            data = {"context": context}
+            if failed_at_step is not None:
+                data["failed_at_step"] = failed_at_step
         return self._request("PATCH", f"/v1/procedures/{procedure_id}/feedback",
+                            data=data,
                             params={"success": "true" if success else "false"})
+
+    def procedure_history(self, procedure_id: str,
+                          user_id: str = "default") -> dict:
+        """
+        Get version history for a procedure.
+
+        Shows how the procedure evolved over time through experience-driven learning.
+
+        Args:
+            procedure_id: UUID of any version of the procedure
+
+        Returns:
+            {"versions": [...], "evolution_log": [...]}
+        """
+        return self._request("GET", f"/v1/procedures/{procedure_id}/history")
+
+    def procedure_evolution(self, procedure_id: str,
+                            user_id: str = "default") -> dict:
+        """
+        Get the evolution log for a procedure.
+
+        Shows what changed at each version and which episodes triggered the changes.
+
+        Args:
+            procedure_id: UUID of any version of the procedure
+
+        Returns:
+            {"evolution": [...]}
+        """
+        return self._request("GET", f"/v1/procedures/{procedure_id}/evolution")
 
     # ---- Unified Search ----
 

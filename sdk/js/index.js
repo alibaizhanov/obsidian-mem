@@ -273,16 +273,41 @@ class MengramClient {
 
   /**
    * Record success/failure feedback for a procedure.
+   * On failure with context, triggers experience-driven evolution.
    * @param {string} procedureId - UUID of the procedure
    * @param {object} [options]
    * @param {boolean} [options.success] - true if worked, false if failed (default true)
+   * @param {string} [options.context] - What went wrong (triggers evolution on failure)
+   * @param {number} [options.failedAtStep] - Which step number failed
    * @returns {Promise<object>}
    */
   async procedureFeedback(procedureId, options = {}) {
     const success = options.success !== false;
-    return this._request('PATCH', `/v1/procedures/${procedureId}/feedback`, null, {
+    const body = options.context ? {
+      context: options.context,
+      ...(options.failedAtStep != null && { failed_at_step: options.failedAtStep }),
+    } : null;
+    return this._request('PATCH', `/v1/procedures/${procedureId}/feedback`, body, {
       success: success ? 'true' : 'false',
     });
+  }
+
+  /**
+   * Get version history for a procedure.
+   * @param {string} procedureId - UUID of any version of the procedure
+   * @returns {Promise<{versions: Array, evolution_log: Array}>}
+   */
+  async procedureHistory(procedureId) {
+    return this._request('GET', `/v1/procedures/${procedureId}/history`);
+  }
+
+  /**
+   * Get the evolution log for a procedure.
+   * @param {string} procedureId - UUID of any version of the procedure
+   * @returns {Promise<{evolution: Array}>}
+   */
+  async procedureEvolution(procedureId) {
+    return this._request('GET', `/v1/procedures/${procedureId}/evolution`);
   }
 
   // ---- Unified Search ----

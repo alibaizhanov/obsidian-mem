@@ -86,6 +86,8 @@ export interface Episode {
   participants: string[];
   emotional_valence: 'positive' | 'negative' | 'neutral' | 'mixed';
   importance: number;
+  linked_procedure_id: string | null;
+  failed_at_step: number | null;
   score?: number;
   created_at: string | null;
   memory_type?: 'episodic';
@@ -99,11 +101,40 @@ export interface Procedure {
   entity_names: string[];
   success_count: number;
   fail_count: number;
+  version: number;
+  parent_version_id?: string | null;
+  evolved_from_episode?: string | null;
+  is_current?: boolean;
   score?: number;
   last_used: string | null;
   created_at?: string | null;
   updated_at: string | null;
   memory_type?: 'procedural';
+}
+
+export interface ProcedureEvolutionEntry {
+  id: string;
+  procedure_id: string;
+  episode_id: string | null;
+  change_type: 'step_added' | 'step_removed' | 'step_modified' | 'step_reordered' | 'auto_created';
+  diff: Record<string, any>;
+  version_before: number;
+  version_after: number;
+  created_at: string | null;
+}
+
+export interface ProcedureHistoryResult {
+  versions: Procedure[];
+  evolution_log: ProcedureEvolutionEntry[];
+}
+
+export interface FeedbackResult {
+  id: string;
+  name: string;
+  success_count: number;
+  fail_count: number;
+  feedback: 'success' | 'failure';
+  evolution_triggered: boolean;
 }
 
 export interface UnifiedSearchResult {
@@ -149,7 +180,9 @@ export declare class MengramClient {
 
   // Procedural Memory
   procedures(options?: { query?: string; limit?: number }): Promise<Procedure[]>;
-  procedureFeedback(procedureId: string, options?: { success?: boolean }): Promise<any>;
+  procedureFeedback(procedureId: string, options?: { success?: boolean; context?: string; failedAtStep?: number }): Promise<FeedbackResult>;
+  procedureHistory(procedureId: string): Promise<ProcedureHistoryResult>;
+  procedureEvolution(procedureId: string): Promise<{ evolution: ProcedureEvolutionEntry[] }>;
 
   // Unified Search
   searchAll(query: string, options?: { limit?: number }): Promise<UnifiedSearchResult>;

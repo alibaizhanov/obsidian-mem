@@ -135,6 +135,8 @@ CREATE TABLE episodes (
     participants TEXT[] DEFAULT '{}',
     emotional_valence VARCHAR(20) DEFAULT 'neutral',
     importance FLOAT DEFAULT 0.5,
+    linked_procedure_id UUID,             -- v2.7: link to procedure that was followed/failed
+    failed_at_step INT,                   -- v2.7: which step failed (NULL = not a procedure failure)
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ
@@ -174,11 +176,15 @@ CREATE TABLE procedures (
     success_count INT DEFAULT 0,
     fail_count INT DEFAULT 0,
     last_used TIMESTAMPTZ,
+    version INT DEFAULT 1,                          -- v2.7: procedure version number
+    parent_version_id UUID REFERENCES procedures(id),  -- v2.7: previous version
+    evolved_from_episode UUID,                      -- v2.7: episode that triggered evolution
+    is_current BOOLEAN DEFAULT TRUE,                -- v2.7: only latest version is current
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ,
-    UNIQUE(user_id, name)
+    UNIQUE(user_id, name, version)
 );
 
 CREATE INDEX idx_procedures_user ON procedures(user_id, updated_at DESC);
@@ -198,6 +204,30 @@ CREATE INDEX idx_proc_emb_hnsw ON procedure_embeddings
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 CREATE INDEX idx_proc_emb_tsv ON procedure_embeddings USING gin(tsv);
+
+-- Add FK for episodes → procedures (deferred because procedures table is created after episodes)
+ALTER TABLE episodes ADD CONSTRAINT fk_episodes_linked_procedure
+    FOREIGN KEY (linked_procedure_id) REFERENCES procedures(id) ON DELETE SET NULL;
+
+-- v2.7: filter only current versions
+CREATE INDEX idx_procedures_current ON procedures(user_id, is_current) WHERE is_current = TRUE;
+
+-- ============================================
+-- 8b. Procedure Evolution Log (v2.7 — experience-driven procedures)
+-- ============================================
+
+CREATE TABLE procedure_evolution (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    procedure_id UUID NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
+    episode_id UUID REFERENCES episodes(id) ON DELETE SET NULL,
+    change_type VARCHAR(30) NOT NULL,   -- step_added, step_removed, step_modified, step_reordered, auto_created
+    diff JSONB DEFAULT '{}',            -- {added: [...], removed: [...], modified: [...]}
+    version_before INT,
+    version_after INT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_proc_evolution_proc ON procedure_evolution(procedure_id, created_at DESC);
 
 -- ============================================
 -- 9. Usage tracking (for dashboard / billing)
