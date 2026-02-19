@@ -38,16 +38,14 @@ def main():
         print(f"{RED}Error: OPENAI_API_KEY not set.{RESET}")
         sys.exit(1)
 
-    user_id = "assistant-demo"
-
     # Initialize LangChain components
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
-    history = MengramChatMessageHistory(api_key=api_key, user_id=user_id)
-    retriever = MengramRetriever(api_key=api_key, user_id=user_id, top_k=5)
+    history = MengramChatMessageHistory(api_key=api_key)
+    retriever = MengramRetriever(api_key=api_key, top_k=5)
 
     # Load cognitive profile (AI-generated summary of what Mengram knows about you)
     print(f"\n{DIM}Loading cognitive profile...{RESET}")
-    profile = get_mengram_profile_prompt(api_key=api_key, user_id=user_id)
+    profile = get_mengram_profile_prompt(api_key=api_key)
     system_prompt = profile if profile else "You are a helpful personal assistant."
 
     print(f"\n{BOLD}{CYAN}{'=' * 60}")

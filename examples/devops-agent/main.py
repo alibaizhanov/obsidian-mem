@@ -41,7 +41,6 @@ def main():
         sys.exit(1)
 
     mem = CloudMemory(api_key=api_key)
-    user_id = "devops-demo"
 
     header("DevOps Agent — Experience-Driven Procedures")
     print(f"  This demo shows how Mengram learns deployment procedures")
@@ -65,7 +64,7 @@ def main():
         )},
     ]
 
-    result = mem.add(conversation, user_id=user_id)
+    result = mem.add(conversation)
     job_id = result.get("job_id")
     print(f"  Sent conversation to Mengram (job: {job_id})")
 
@@ -80,12 +79,12 @@ def main():
     # --- Step 2: Find the procedure ---
     step(2, "Searching for deployment procedures...")
 
-    procedures = mem.procedures(query="deploy payments", user_id=user_id)
+    procedures = mem.procedures(query="deploy payments")
 
     if not procedures:
         print(f"  {DIM}Extraction still processing, retrying...{RESET}")
         time.sleep(5)
-        procedures = mem.procedures(query="deploy payments", user_id=user_id)
+        procedures = mem.procedures(query="deploy payments")
 
     proc_id = None
     if procedures:
@@ -130,7 +129,7 @@ def main():
     # --- Step 4: View the evolved procedure ---
     step(4, "Viewing the evolved procedure...")
 
-    updated = mem.procedures(query="deploy payments", user_id=user_id)
+    updated = mem.procedures(query="deploy payments")
 
     if updated:
         proc = updated[0]
@@ -145,7 +144,7 @@ def main():
     # --- Step 5: Version history ---
     step(5, "Viewing procedure version history...")
 
-    history = mem.procedure_history(proc_id, user_id=user_id)
+    history = mem.procedure_history(proc_id)
 
     if history and history.get("versions"):
         for v in history["versions"]:
@@ -163,7 +162,7 @@ def main():
     # --- Step 6: Unified search ---
     step(6, "Unified search across all memory types...")
 
-    results = mem.search_all("deployment best practices", user_id=user_id)
+    results = mem.search_all("deployment best practices")
 
     for mem_type in ["semantic", "episodic", "procedural"]:
         items = results.get(mem_type, [])

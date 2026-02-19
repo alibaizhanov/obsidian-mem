@@ -32,8 +32,7 @@ def main():
         print(f"{RED}Error: OPENAI_API_KEY not set (required by CrewAI).{RESET}")
         sys.exit(1)
 
-    user_id = "customer-jane-doe"
-    tools = create_mengram_tools(api_key=api_key, user_id=user_id)
+    tools = create_mengram_tools(api_key=api_key)
 
     agent = Agent(
         role="Customer Support Specialist",
