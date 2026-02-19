@@ -333,7 +333,7 @@ class CloudMemory:
             {"semantic": [...], "episodic": [...], "procedural": [...]}
         """
         return self._request("POST", "/v1/search/all",
-                            json={"query": query, "limit": limit})
+                            data={"query": query, "limit": limit})
 
     # ---- Agents ----
 
