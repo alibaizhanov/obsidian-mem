@@ -706,7 +706,7 @@
       <span class="c-str">"command"</span>: <span class="c-str">"/path/from/step2/mengram"</span>,
       <span class="c-str">"args"</span>: [<span class="c-str">"server"</span>, <span class="c-str">"--cloud"</span>],
       <span class="c-str">"env"</span>: {
-        <span class="c-str">"MENGRAM_API_KEY"</span>: <span class="c-str">"your-api-key"</span>,
+        <span class="c-str">"MENGRAM_API_KEY"</span>: <span class="c-str">"om-..."</span>,
         <span class="c-str">"MENGRAM_URL"</span>: <span class="c-str">"https://mengram.io"</span>
       }
     }
@@ -746,7 +746,7 @@
                                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
 <pre><span class="c-kw">from</span> <span class="c-fn">cloud.client</span> <span class="c-kw">import</span> CloudMemory
 
-m = CloudMemory(api_key=<span class="c-str">"your-api-key"</span>)
+m = CloudMemory(api_key=<span class="c-str">"om-..."</span>)
 
 <span class="c-cmt"># Save — auto-extracts facts, events, workflows</span>
 m.add([
@@ -788,13 +788,13 @@ profile = m.get_profile()
                                 <button class="copy-btn" onclick="copyCode(this)">Copy</button>
 <pre><span class="c-kw">const</span> { MengramClient } = <span class="c-fn">require</span>(<span class="c-str">'mengram-ai'</span>);
 
-<span class="c-kw">const</span> m = <span class="c-kw">new</span> MengramClient(<span class="c-str">'your-api-key'</span>);
+<span class="c-kw">const</span> m = <span class="c-kw">new</span> MengramClient(<span class="c-str">'om-...'</span>);
 
 <span class="c-cmt">// Save — auto-extracts facts, events, workflows</span>
 <span class="c-kw">await</span> m.add([
     { <span class="c-str">role</span>: <span class="c-str">'user'</span>, <span class="c-str">content</span>: <span class="c-str">'Fixed OOM with Redis cache'</span> },
     { <span class="c-str">role</span>: <span class="c-str">'assistant'</span>, <span class="c-str">content</span>: <span class="c-str">'Got it.'</span> },
-], { <span class="c-str">userId</span>: <span class="c-str">'ali'</span> });
+]);
 
 <span class="c-cmt">// Unified search — all 3 memory types</span>
 <span class="c-kw">const</span> all = <span class="c-kw">await</span> m.searchAll(<span class="c-str">'database issues'</span>);
@@ -835,8 +835,7 @@ profile = m.get_profile()
 
 <span class="c-cmt"># Replaces ConversationBufferMemory</span>
 memory = MengramMemory(
-    api_key=<span class="c-str">"your-api-key"</span>,
-    user_id=<span class="c-str">"ali"</span>,
+    api_key=<span class="c-str">"om-..."</span>,
     use_profile=<span class="c-fn">True</span>,  <span class="c-cmt"># Cognitive Profile</span>
 )
 
@@ -862,9 +861,8 @@ chain.predict(input=<span class="c-str">"How did my deploy go?"</span>)
 chain_with_memory = RunnableWithMessageHistory(
     chain,
     <span class="c-kw">lambda</span> sid: MengramChatMessageHistory(
-        api_key=<span class="c-str">"your-api-key"</span>,
+        api_key=<span class="c-str">"om-..."</span>,
         session_id=sid,
-        user_id=<span class="c-str">"ali"</span>,
     ),
     input_messages_key=<span class="c-str">"input"</span>,
     history_messages_key=<span class="c-str">"history"</span>,
@@ -898,7 +896,7 @@ chain_with_memory = RunnableWithMessageHistory(
 <span class="c-kw">from</span> <span class="c-fn">integrations.crewai</span> <span class="c-kw">import</span> create_mengram_tools
 
 tools = create_mengram_tools(
-    api_key=<span class="c-str">"your-api-key"</span>,
+    api_key=<span class="c-str">"om-..."</span>,
 )
 
 agent = Agent(
@@ -1199,7 +1197,7 @@ crew = Crew(agents=[agent], tasks=[...])</pre>
         <!-- Footer -->
         <footer>
             <p>
-                Mengram — human-like memory for AI · v2.7.0
+                Mengram — human-like memory for AI · v2.7.2
                 &nbsp;·&nbsp;
                 <a href="https://github.com/alibaizhanov/mengram">GitHub</a>
                 &nbsp;·&nbsp;

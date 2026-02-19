@@ -94,12 +94,12 @@ No other memory system does this.
 - Uses `curl` — no pip packages, no npm, no extra dependencies
 - API key stays in env vars, never logged or exposed
 - All scripts have security manifests
-- Mengram is open-source: [github.com/AiBaizhanov/mengram](https://github.com/AiBaizhanov/mengram)
+- Mengram is open-source: [github.com/alibaizhanov/mengram](https://github.com/alibaizhanov/mengram)
 
 ## Links
 
 - **Mengram**: [mengram.io](https://mengram.io)
-- **GitHub**: [github.com/AiBaizhanov/mengram](https://github.com/AiBaizhanov/mengram)
+- **GitHub**: [github.com/alibaizhanov/mengram](https://github.com/alibaizhanov/mengram)
 - **API Docs**: [mengram.io/docs](https://mengram.io/docs)
 
 ## License

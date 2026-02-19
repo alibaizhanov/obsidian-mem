@@ -8,22 +8,22 @@ Quick Start:
     pip install mengram-ai langchain-core
 
 Usage with RunnableWithMessageHistory (modern):
-    from mengram.integrations.langchain import MengramChatMessageHistory
+    from integrations.langchain import MengramChatMessageHistory
 
-    history = MengramChatMessageHistory(api_key="om-...", user_id="ali")
+    history = MengramChatMessageHistory(api_key="om-...")
     chain_with_history = RunnableWithMessageHistory(chain, lambda sid: history)
 
 Usage as Retriever (RAG replacement):
-    from mengram.integrations.langchain import MengramRetriever
+    from integrations.langchain import MengramRetriever
 
-    retriever = MengramRetriever(api_key="om-...", user_id="ali")
+    retriever = MengramRetriever(api_key="om-...")
     docs = retriever.invoke("deployment issues")
     # → Documents from all 3 memory types
 
 Usage with Cognitive Profile:
-    from mengram.integrations.langchain import get_mengram_profile_prompt
+    from integrations.langchain import get_mengram_profile_prompt
 
-    system = get_mengram_profile_prompt(api_key="om-...", user_id="ali")
+    system = get_mengram_profile_prompt(api_key="om-...")
     chain = prompt | llm  # system prompt auto-personalized
 """
 
@@ -64,13 +64,13 @@ class MengramChatMessageHistory:
     into semantic, episodic, and procedural memory.
     
     Usage:
-        from mengram.integrations.langchain import MengramChatMessageHistory
+        from integrations.langchain import MengramChatMessageHistory
         from langchain_core.runnables.history import RunnableWithMessageHistory
-        
+
         def get_history(session_id: str):
             return MengramChatMessageHistory(
-                api_key="om-...", 
-                user_id=session_id,
+                api_key="om-...",
+                session_id=session_id,
             )
         
         chain_with_history = RunnableWithMessageHistory(
@@ -159,9 +159,9 @@ class MengramRetriever:
     Drop-in replacement for any LangChain retriever — replaces RAG with memory.
     
     Usage:
-        from mengram.integrations.langchain import MengramRetriever
-        
-        retriever = MengramRetriever(api_key="om-...", user_id="ali")
+        from integrations.langchain import MengramRetriever
+
+        retriever = MengramRetriever(api_key="om-...")
         
         # Use in a chain
         from langchain_core.runnables import RunnablePassthrough
@@ -309,10 +309,10 @@ def get_mengram_profile_prompt(
     Cached for 1 hour on the server side.
     
     Usage:
-        from mengram.integrations.langchain import get_mengram_profile_prompt
+        from integrations.langchain import get_mengram_profile_prompt
         from langchain_core.prompts import ChatPromptTemplate
-        
-        system_prompt = get_mengram_profile_prompt(api_key="om-...", user_id="ali")
+
+        system_prompt = get_mengram_profile_prompt(api_key="om-...")
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt + "\\n\\n{instructions}"),
@@ -344,11 +344,10 @@ def create_mengram_profile_prompt(
     Create a LangChain ChatPromptTemplate with Cognitive Profile baked in.
     
     Usage:
-        from mengram.integrations.langchain import create_mengram_profile_prompt
-        
+        from integrations.langchain import create_mengram_profile_prompt
+
         prompt = create_mengram_profile_prompt(
             api_key="om-...",
-            user_id="ali",
             additional_instructions="Be concise. Focus on actionable advice.",
         )
         
@@ -393,11 +392,11 @@ def create_mengram_chain(
     - Automatic memory formatting
     
     Usage:
-        from mengram.integrations.langchain import create_mengram_chain
+        from integrations.langchain import create_mengram_chain
         from langchain_openai import ChatOpenAI
-        
+
         llm = ChatOpenAI(model="gpt-4o-mini")
-        chain = create_mengram_chain(llm, api_key="om-...", user_id="ali")
+        chain = create_mengram_chain(llm, api_key="om-...")
         
         response = chain.invoke({"input": "How do I deploy?"})
         # → Uses Cognitive Profile + searches episodic/procedural memory

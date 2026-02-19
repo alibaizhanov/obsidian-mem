@@ -24,10 +24,10 @@ Usage:
     entity = m.get("PostgreSQL")
 
     # Delete
-    m.delete("PostgreSQL", user_id="ali")
+    m.delete("PostgreSQL")
 
     # Stats
-    print(m.stats(user_id="ali"))
+    print(m.stats())
 """
 
 import json

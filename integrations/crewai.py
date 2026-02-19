@@ -6,9 +6,9 @@ Agents automatically learn workflows as procedures and improve over time.
 
 Usage:
 
-    from mengram.integrations.crewai import create_mengram_tools
+    from integrations.crewai import create_mengram_tools
 
-    tools = create_mengram_tools(api_key="om-...", user_id="ali")
+    tools = create_mengram_tools(api_key="om-...")
 
     agent = Agent(
         role="Support Engineer",

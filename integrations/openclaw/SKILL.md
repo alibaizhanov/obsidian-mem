@@ -1,7 +1,7 @@
 ---
 name: mengram-memory
 description: Long-term memory with 3 types (facts, events, workflows). Remember user preferences, past conversations, and learned procedures across sessions. Use when recalling what the user said before, saving important info, getting user context, or tracking completed workflows.
-homepage: https://github.com/AiBaizhanov/mengram
+homepage: https://github.com/alibaizhanov/mengram
 metadata: {"openclaw":{"emoji":"🧠","requires":{"env":["MENGRAM_API_KEY"],"bins":["curl","python3"]},"primaryEnv":"MENGRAM_API_KEY","files":["scripts/*"]}}
 ---
 
@@ -136,4 +136,4 @@ Get your free API key at https://mengram.io
 - **Environment variables accessed:** `MENGRAM_API_KEY` (only)
 - **Local files read/written:** none
 
-**Trust Statement:** By using this skill, conversation data is sent to mengram.io for memory extraction and storage. Only install if you trust Mengram with your conversation data. Mengram is open-source: https://github.com/AiBaizhanov/mengram
+**Trust Statement:** By using this skill, conversation data is sent to mengram.io for memory extraction and storage. Only install if you trust Mengram with your conversation data. Mengram is open-source: https://github.com/alibaizhanov/mengram

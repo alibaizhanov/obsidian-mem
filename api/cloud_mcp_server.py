@@ -11,7 +11,7 @@ Claude Desktop config:
       "command": "mengram",
       "args": ["server", "--cloud"],
       "env": {
-        "MENGRAM_API_KEY": "mg-abc123...",
+        "MENGRAM_API_KEY": "om-...",
         "MENGRAM_URL": "https://mengram.io"
       }
     }

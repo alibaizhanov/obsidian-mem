@@ -553,7 +553,7 @@ class CloudStore:
 
     def create_api_key(self, user_id: str, name: str = "default") -> str:
         """Generate API key, store hash, return raw key."""
-        raw_key = f"mg-{secrets.token_urlsafe(32)}"
+        raw_key = f"om-{secrets.token_urlsafe(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
         key_prefix = raw_key[:10]
 
