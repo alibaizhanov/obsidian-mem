@@ -118,7 +118,6 @@ def main():
                 "Fix: Always run pending database migrations before deploying."
             ),
             failed_at_step=6,
-            user_id=user_id,
         )
         print(f"  {GREEN}Failure reported — Mengram is evolving the procedure...{RESET}")
         time.sleep(3)
