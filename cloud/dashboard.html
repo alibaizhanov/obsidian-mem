@@ -1150,7 +1150,13 @@ async function showProcedureDetail(id) {
             <h4 style="margin-bottom:8px;">Steps</h4>
             <ol style="padding-left:20px;color:var(--text-2);font-size:13px;line-height:1.8;">`;
         for (const step of (current.steps || [])) {
-            html += `<li>${step}</li>`;
+            if (typeof step === 'object') {
+                const action = esc(step.action || step.description || step.text || JSON.stringify(step));
+                const detail = step.detail ? ` <span style="color:var(--text-3);">— ${esc(step.detail)}</span>` : '';
+                html += `<li>${action}${detail}</li>`;
+            } else {
+                html += `<li>${esc(step)}</li>`;
+            }
         }
         html += `</ol>
             <div style="display:flex;gap:16px;margin-top:16px;font-size:12px;color:var(--text-3);">
