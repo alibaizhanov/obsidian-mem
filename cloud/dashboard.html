@@ -225,6 +225,7 @@
             <div class="nav-item" onclick="switchTab('insights')"><span class="icon">✨</span> AI Insights</div>
             <div class="nav-item" onclick="switchTab('graph')"><span class="icon">🕸️</span> Knowledge Graph</div>
             <div class="nav-item" onclick="switchTab('entities')"><span class="icon">📦</span> Entities</div>
+            <div class="nav-item" onclick="switchTab('procedures')"><span class="icon">🧬</span> Procedures</div>
             <div class="nav-item" onclick="switchTab('settings')"><span class="icon">⚙️</span> Settings</div>
         </div>
         <div class="sidebar-footer"><a href="/">← Home</a></div>
@@ -308,6 +309,21 @@
         <div class="tab-content" id="tab-entities">
             <div class="page-header"><h2>All Entities</h2></div>
             <div class="entities-grid" id="ent-grid"></div>
+        </div>
+
+        <div class="tab-content" id="tab-procedures">
+            <div class="page-header"><h2>🧬 Procedures</h2></div>
+            <div id="procedures-box">
+                <div class="loading" style="text-align:center;padding:40px;color:var(--text-2);">Loading procedures...</div>
+            </div>
+            <div id="procedure-detail" style="display:none;margin-top:20px;">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                    <button onclick="closeProcedureDetail()" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 12px;color:var(--text-2);cursor:pointer;font-size:13px;">← Back</button>
+                    <h3 id="proc-detail-name" style="font-size:18px;font-weight:600;"></h3>
+                    <span id="proc-detail-version" style="background:var(--accent-dim);color:var(--accent);padding:2px 8px;border-radius:6px;font-size:12px;font-weight:500;"></span>
+                </div>
+                <div id="proc-detail-content"></div>
+            </div>
         </div>
 
         <div class="tab-content" id="tab-settings">
@@ -412,6 +428,7 @@ function switchTab(t) {
     if(t==='entities') loadEntities();
     if(t==='insights') loadInsights();
     if(t==='agents') loadAgentHistory();
+    if(t==='procedures') loadProcedures();
     if(t==='settings') { loadWebhooks(); loadTeams(); loadKeys(); }
 }
 
@@ -1060,6 +1077,132 @@ async function deleteAll() {
         for(const e of (d.memories||[])) await fetch(`${API}/v1/entity/${encodeURIComponent(e.name)}`,{method:'DELETE',headers:H()});
         loadAll(); alert('All data deleted.');
     } catch(e) { alert('Failed.'); }
+}
+
+// ---- Procedures ----
+async function loadProcedures() {
+    const box = document.getElementById('procedures-box');
+    document.getElementById('procedure-detail').style.display = 'none';
+    box.style.display = 'block';
+    try {
+        const res = await fetch(`${API}/v1/procedures`, {headers: H()});
+        const data = await res.json();
+        const procs = data.procedures || [];
+        if (!procs.length) {
+            box.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-2);">
+                <div style="font-size:48px;margin-bottom:16px;">🧬</div>
+                <h3 style="color:var(--text);margin-bottom:8px;">No procedures yet</h3>
+                <p>Procedures are auto-extracted from conversations. They capture workflows, processes, and how-to knowledge.</p>
+                <p style="margin-top:8px;font-size:12px;">Add conversations via the API and procedures will appear here.</p>
+            </div>`;
+            return;
+        }
+        let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+        for (const p of procs) {
+            const steps = (p.steps || []).length;
+            const v = p.version || 1;
+            const vBadge = v > 1 ? `<span style="background:var(--green-dim);color:var(--green);padding:2px 6px;border-radius:4px;font-size:11px;font-weight:500;">v${v}</span>` : '';
+            const success = p.success_count || 0;
+            const fail = p.failure_count || 0;
+            html += `<div onclick="showProcedureDetail('${p.id}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:16px 20px;cursor:pointer;transition:all 0.15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <strong style="font-size:15px;">${p.name}</strong> ${vBadge}
+                </div>
+                <div style="color:var(--text-2);font-size:13px;margin-bottom:8px;">${p.trigger || ''}</div>
+                <div style="display:flex;gap:16px;font-size:12px;color:var(--text-3);">
+                    <span>📋 ${steps} steps</span>
+                    <span style="color:var(--green);">✅ ${success} success</span>
+                    <span style="color:var(--red);">❌ ${fail} fail</span>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+        box.innerHTML = html;
+    } catch(e) {
+        box.innerHTML = `<div style="color:var(--red);padding:20px;">Failed to load procedures: ${e.message}</div>`;
+    }
+}
+
+async function showProcedureDetail(id) {
+    document.getElementById('procedures-box').style.display = 'none';
+    const detail = document.getElementById('procedure-detail');
+    detail.style.display = 'block';
+    const content = document.getElementById('proc-detail-content');
+    content.innerHTML = '<div class="loading" style="padding:20px;color:var(--text-2);">Loading...</div>';
+
+    try {
+        const res = await fetch(`${API}/v1/procedures/${id}/history`, {headers: H()});
+        const data = await res.json();
+        const versions = data.versions || [];
+        const evolution = data.evolution_log || [];
+        const current = versions.find(v => v.is_current) || versions[0];
+        if (!current) { content.innerHTML = '<p style="color:var(--text-2);">Procedure not found.</p>'; return; }
+
+        document.getElementById('proc-detail-name').textContent = current.name;
+        document.getElementById('proc-detail-version').textContent = `v${current.version || 1}`;
+
+        let html = '';
+
+        // Current steps
+        html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;">
+            <h4 style="margin-bottom:4px;">Trigger</h4>
+            <p style="color:var(--text-2);font-size:13px;margin-bottom:16px;">${current.trigger || 'N/A'}</p>
+            <h4 style="margin-bottom:8px;">Steps</h4>
+            <ol style="padding-left:20px;color:var(--text-2);font-size:13px;line-height:1.8;">`;
+        for (const step of (current.steps || [])) {
+            html += `<li>${step}</li>`;
+        }
+        html += `</ol>
+            <div style="display:flex;gap:16px;margin-top:16px;font-size:12px;color:var(--text-3);">
+                <span style="color:var(--green);">✅ ${current.success_count || 0} successes</span>
+                <span style="color:var(--red);">❌ ${current.failure_count || 0} failures</span>
+            </div>
+        </div>`;
+
+        // Evolution log
+        if (evolution.length > 0) {
+            html += `<h4 style="margin-bottom:12px;">🧬 Evolution History</h4>
+            <div style="display:flex;flex-direction:column;gap:8px;">`;
+            for (const ev of evolution) {
+                const typeColors = {step_added:'var(--green)',step_removed:'var(--red)',step_modified:'var(--orange)',auto_created:'var(--accent)'};
+                const color = typeColors[ev.change_type] || 'var(--text-2)';
+                const diff = ev.diff || {};
+                html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="background:${color}22;color:${color};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;">${ev.change_type}</span>
+                        <span style="color:var(--text-3);font-size:11px;">v${ev.version_before || '?'} → v${ev.version_after || '?'}</span>
+                        <span style="color:var(--text-3);font-size:11px;margin-left:auto;">${new Date(ev.created_at).toLocaleDateString()}</span>
+                    </div>
+                    ${diff.reason ? `<p style="color:var(--text-2);font-size:12px;">${diff.reason}</p>` : ''}
+                </div>`;
+            }
+            html += '</div>';
+        }
+
+        // Version history
+        if (versions.length > 1) {
+            html += `<h4 style="margin-top:20px;margin-bottom:12px;">📋 All Versions</h4>
+            <div style="display:flex;flex-direction:column;gap:6px;">`;
+            for (const v of versions) {
+                const isCurrent = v.is_current ? ' style="border-color:var(--accent);"' : '';
+                const badge = v.is_current ? '<span style="background:var(--accent-dim);color:var(--accent);padding:1px 6px;border-radius:4px;font-size:10px;margin-left:6px;">current</span>' : '';
+                html += `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13px;"${isCurrent}>
+                    <strong>v${v.version || 1}</strong>${badge}
+                    <span style="color:var(--text-3);font-size:11px;margin-left:8px;">${(v.steps||[]).length} steps</span>
+                </div>`;
+            }
+            html += '</div>';
+        }
+
+        content.innerHTML = html;
+    } catch(e) {
+        content.innerHTML = `<div style="color:var(--red);padding:20px;">Failed to load: ${e.message}</div>`;
+    }
+}
+
+function closeProcedureDetail() {
+    document.getElementById('procedure-detail').style.display = 'none';
+    document.getElementById('procedures-box').style.display = 'block';
 }
 </script>
 </body>

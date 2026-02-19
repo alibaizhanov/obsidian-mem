@@ -18,6 +18,7 @@
 | Semantic Memory (facts) | ✅ | ✅ | ✅ |
 | **Episodic Memory (events)** | ✅ | ❌ | ❌ |
 | **Procedural Memory (workflows)** | ✅ | ❌ | ❌ |
+| **Experience-Driven Procedures** | ✅ Self-improving workflows | ❌ | ❌ |
 | **Cognitive Profile** | ✅ | ❌ | ❌ |
 | **Smart Triggers** | ✅ | ❌ | ❌ |
 | **Unified Search (all 3 types)** | ✅ | ❌ | ❌ |
@@ -122,6 +123,15 @@ all_results = m.search_all("deployment issues")
 # Procedure feedback — AI learns what works
 m.procedure_feedback(proc_id, success=True)
 
+# Experience-driven evolution — procedure improves on failure
+m.procedure_feedback(proc_id, success=False,
+                     context="OOM on Railway", failed_at_step=3)
+# → Automatically creates improved version
+
+# View procedure version history
+history = m.procedure_history(proc_id)
+# → {versions: [v1, v2, v3], evolution_log: [...]}
+
 # Cognitive Profile — instant personalization
 profile = m.get_profile()
 # → {system_prompt: "You are talking to Ali, a developer in Almaty..."}
@@ -162,6 +172,14 @@ const all = await m.searchAll('database issues');
 
 // Procedure feedback — AI learns
 await m.procedureFeedback(procId, { success: true });
+
+// Experience-driven evolution — procedure improves on failure
+await m.procedureFeedback(procId, {
+  success: false, context: 'OOM on Railway', failedAtStep: 3
+});
+
+// View procedure version history
+const history = await m.procedureHistory(procId);
 
 // Cognitive Profile
 const profile = await m.getProfile();
@@ -209,6 +227,46 @@ m.dismiss_trigger(42)      # Dismiss a trigger
 ```
 
 Triggers fire automatically via background cron (every 5 min) and send through your configured webhooks. Works with OpenClaw, Slack, Discord — any webhook endpoint.
+
+## Experience-Driven Procedures
+
+**Procedures that learn from experience.** When a procedure fails, Mengram automatically analyzes the failure and evolves it to a new version. When 3+ similar successful episodes appear, a new procedure is auto-created.
+
+**Failure cycle — procedures evolve automatically:**
+```python
+# Week 1: Procedure exists
+# "Deploy": build → push → deploy
+
+# User conversation: "Deploy failed, forgot migrations"
+m.add([{"role": "user", "content": "Deploy to Railway failed — forgot to run migrations, DB crashed"}])
+# → Episode auto-linked to "Deploy" procedure (embedding similarity)
+# → Negative outcome detected → LLM analyzes failure
+# → "Deploy" v2 created: build → run migrations → push → deploy
+
+# Week 2: "Deploy failed again, OOM on Railway"
+# → "Deploy" v3: build → run migrations → check memory limits → push → deploy
+```
+
+**Success cycle — procedures auto-created from patterns:**
+```python
+# 3+ similar successful episodes about CI/CD setup detected
+# → System auto-creates procedure:
+# "Setup CI/CD": create workflows → add tests → configure secrets → verify on branch
+```
+
+**Explicit feedback (SDK / MCP):**
+```python
+# Report failure with context → triggers evolution
+m.procedure_feedback(proc_id, success=False,
+                     context="OOM error on step 3",
+                     failed_at_step=3)
+
+# View version history
+history = m.procedure_history(proc_id)
+# → {versions: [v1, v2, v3], evolution_log: [{change: "step_added", ...}]}
+```
+
+Works automatically across all integrations — SDK, LangChain, CrewAI, OpenClaw, MCP. No extra code needed.
 
 ## LangChain Integration
 
@@ -356,7 +414,9 @@ All endpoints require `Authorization: Bearer om-...` header. Your API key identi
 | `GET /v1/episodes/search` | Search episodes by meaning |
 | `GET /v1/procedures` | List procedural memories |
 | `GET /v1/procedures/search` | Search procedures by trigger |
-| `PATCH /v1/procedures/{id}/feedback` | Record success/failure |
+| `PATCH /v1/procedures/{id}/feedback` | Record success/failure (triggers evolution on failure with context) |
+| `GET /v1/procedures/{id}/history` | **Procedure version history + evolution log** |
+| `GET /v1/procedures/{id}/evolution` | **Evolution log (what changed and why)** |
 | `GET /v1/profile` | **Cognitive Profile (system prompt)** |
 | `GET /v1/triggers` | **Smart Triggers (reminders, contradictions, patterns)** |
 | `POST /v1/triggers/process` | Fire all pending triggers |
@@ -378,14 +438,20 @@ Full docs: **https://mengram.io/docs**
 ┌──────────────────────────────────────┐
 │          Your AI Clients             │
 │  Claude Desktop · Cursor · Windsurf  │
+│  LangChain · CrewAI · OpenClaw      │
 └──────────────┬───────────────────────┘
-               │ MCP / REST API
+               │ MCP / REST API / SDK
 ┌──────────────▼───────────────────────┐
 │        Mengram Cloud API             │
 │  Extraction · Re-ranking · Search    │
 ├──────────────────────────────────────┤
 │       3 Memory Types                 │
 │  🧠 Semantic · 📝 Episodic · ⚙️ Proc │
+├──────────────────────────────────────┤
+│       Evolution Engine (v2.7)        │
+│  🔄 Auto-link episodes↔procedures   │
+│  📈 Failure→evolve · Pattern→create  │
+│  📜 Version history · Evolution log  │
 ├──────────────────────────────────────┤
 │       Smart Triggers                 │
 │  🔔 Reminders · ⚠️ Contradictions    │

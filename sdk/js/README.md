@@ -38,6 +38,15 @@ const all = await m.searchAll('deployment issues');
 // Procedure feedback — AI learns what works
 await m.procedureFeedback(procId, { success: true });
 
+// Experience-driven evolution — procedure improves on failure
+await m.procedureFeedback(procId, {
+  success: false, context: 'OOM on step 3', failedAtStep: 3
+});
+
+// View procedure version history
+const history = await m.procedureHistory(procId);
+// → { versions: [v1, v2, v3], evolution_log: [...] }
+
 // Cognitive Profile — instant personalization
 const profile = await m.getProfile('ali');
 // → { system_prompt: "You are talking to Ali, a developer..." }
@@ -46,7 +55,7 @@ const profile = await m.getProfile('ali');
 ## TypeScript
 
 ```typescript
-import { MengramClient, SearchResult, Episode, Procedure, UnifiedSearchResult } from 'mengram-ai';
+import { MengramClient, SearchResult, Episode, Procedure, UnifiedSearchResult, ProcedureHistoryResult } from 'mengram-ai';
 
 const m = new MengramClient('om-...');
 
@@ -66,7 +75,9 @@ const all: UnifiedSearchResult = await m.searchAll('issues');
 | `searchAll(query, options?)` | **Unified search (all 3 types)** |
 | `episodes(options?)` | **Search/list episodic memories** |
 | `procedures(options?)` | **Search/list procedural memories** |
-| `procedureFeedback(id, options?)` | **Record success/failure** |
+| `procedureFeedback(id, options?)` | **Record success/failure (triggers evolution on failure)** |
+| `procedureHistory(id)` | **Version history + evolution log** |
+| `procedureEvolution(id)` | **Evolution log (what changed and why)** |
 | `getProfile(userId?, options?)` | **Cognitive Profile** |
 | `getAll(options?)` | List all memories |
 | `get(name)` | Get specific entity |
