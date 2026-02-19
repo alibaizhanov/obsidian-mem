@@ -617,7 +617,7 @@ class CloudStore:
                 "last_used": r["last_used_at"].isoformat() if r["last_used_at"] else None,
             } for r in cur.fetchall()]
 
-    def revoke_api_key(self, user_id: str, key_id: int) -> bool:
+    def revoke_api_key(self, user_id: str, key_id: str) -> bool:
         """Revoke a specific API key by ID."""
         with self._cursor() as cur:
             cur.execute(
@@ -633,7 +633,7 @@ class CloudStore:
                 return True
             return False
 
-    def rename_api_key(self, user_id: str, key_id: int, new_name: str) -> bool:
+    def rename_api_key(self, user_id: str, key_id: str, new_name: str) -> bool:
         """Rename an API key."""
         with self._cursor() as cur:
             cur.execute(

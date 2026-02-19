@@ -122,7 +122,7 @@ results = m.search_all("deployment")  # semantic + episodic + procedural
 profile = m.get_profile()             # instant system prompt
 ```
         """,
-        version="2.7.2",
+        version="2.7.3",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_tags=[
@@ -414,7 +414,7 @@ Be strict — only include entities that directly answer or relate to the query.
         }
 
     @app.delete("/v1/keys/{key_id}", tags=["System"])
-    async def revoke_key(key_id: int, user_id: str = Depends(auth)):
+    async def revoke_key(key_id: str, user_id: str = Depends(auth)):
         """Revoke a specific API key."""
         # Don't allow revoking the key being used for this request
         keys = store.list_api_keys(user_id)
@@ -429,7 +429,7 @@ Be strict — only include entities that directly answer or relate to the query.
         raise HTTPException(status_code=404, detail="Key not found or already revoked")
 
     @app.patch("/v1/keys/{key_id}", tags=["System"])
-    async def rename_key(key_id: int, req: dict, user_id: str = Depends(auth)):
+    async def rename_key(key_id: str, req: dict, user_id: str = Depends(auth)):
         """Rename an API key."""
         name = req.get("name", "")
         if not name or len(name) > 50:
@@ -630,7 +630,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         pool_info = {"type": "pool", "max": 10} if store._pool else {"type": "single"}
         return {
             "status": "ok",
-            "version": "2.7.1",
+            "version": "2.7.3",
             "cache": cache_stats,
             "connection": pool_info,
         }
