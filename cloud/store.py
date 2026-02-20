@@ -145,7 +145,7 @@ class CloudStore:
     - Proper logging
     """
 
-    def __init__(self, database_url: str, pool_min: int = 2, pool_max: int = 10,
+    def __init__(self, database_url: str, pool_min: int = 1, pool_max: int = 3,
                  redis_url: str = None):
         if not PSYCOPG2_AVAILABLE:
             raise ImportError("pip install psycopg2-binary")

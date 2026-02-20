@@ -39,7 +39,7 @@ DATABASE_URL = os.environ.get(
     "DATABASE_URL",
     "postgresql://localhost:5432/mengram"
 )
-REDIS_URL = os.environ.get("REDIS_URL")
+REDIS_URL = os.environ.get("REDIS_URL") or os.environ.get("REDIS_PUBLIC_URL")
 
 # ---- Models ----
 
