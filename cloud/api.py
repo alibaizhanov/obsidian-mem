@@ -894,6 +894,10 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                     except Exception as e:
                         logger.error(f"⚠️ Procedure save failed: {e}")
 
+                # Invalidate search cache — fresh data available
+                store.cache.invalidate(f"search:{user_id}")
+                store.cache.invalidate(f"searchall:{user_id}")
+
                 logger.info(f"✅ Background add complete for {user_id} "
                            f"(entities={len(created)}, episodes={episodes_created}, "
                            f"procedures={procedures_created}, linked={episodes_linked})")
