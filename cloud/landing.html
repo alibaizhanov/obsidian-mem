@@ -557,6 +557,81 @@
         footer a { color: var(--text-2); text-decoration: none; }
         footer a:hover { color: var(--text); }
 
+        /* ---- Changelog ---- */
+        .changelog-section { padding: 80px 0; }
+        .changelog-section h2 {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -1px;
+            margin-bottom: 8px;
+        }
+        .changelog-section > p {
+            text-align: center;
+            color: var(--text-2);
+            font-size: 16px;
+            margin-bottom: 40px;
+        }
+        .changelog-list {
+            max-width: 680px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .cl-entry {
+            display: flex;
+            gap: 20px;
+            padding: 24px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .cl-entry:first-child { padding-top: 0; }
+        .cl-entry:last-child { border-bottom: none; }
+        .cl-date {
+            min-width: 90px;
+            font-size: 13px;
+            color: var(--text-3);
+            font-family: 'JetBrains Mono', monospace;
+            padding-top: 2px;
+        }
+        .cl-body { flex: 1; }
+        .cl-body h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .cl-body p {
+            color: var(--text-2);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .cl-tag {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .cl-tag.feature { background: var(--accent-dim); color: var(--accent); }
+        .cl-tag.improvement { background: rgba(96,165,250,0.1); color: var(--blue); }
+        .cl-tag.fix { background: rgba(251,146,60,0.1); color: var(--orange); }
+        .cl-more {
+            text-align: center;
+            margin-top: 24px;
+        }
+        .cl-more a {
+            color: var(--text-3);
+            font-size: 14px;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .cl-more a:hover { color: var(--text-2); }
+
         /* ---- Animations ---- */
         .anim { opacity: 0; transform: translateY(16px); animation: fadeUp 0.6s ease forwards; }
         .d1 { animation-delay: 0.1s; }
@@ -598,6 +673,7 @@
                 <a href="#how">How it works</a>
                 <a href="#install">Install</a>
                 <a href="#features">Features</a>
+                <a href="#changelog">Changelog</a>
                 <a href="/dashboard">Dashboard</a>
                 <a href="https://github.com/alibaizhanov/mengram">GitHub</a>
                 <a href="#signup" class="btn btn-ghost" style="padding:8px 18px; font-size:13px;">Get API Key</a>
@@ -1180,6 +1256,16 @@ crew = Crew(agents=[agent], tasks=[...])</pre>
             </div>
         </section>
 
+        <!-- Changelog -->
+        <section class="changelog-section" id="changelog">
+            <h2>What's New</h2>
+            <p>Mengram ships improvements every week. Here's what's latest.</p>
+            <div class="changelog-list" id="changelog-list"></div>
+            <div class="cl-more">
+                <a href="https://github.com/alibaizhanov/mengram/commits/main">View full history on GitHub &rarr;</a>
+            </div>
+        </section>
+
         <!-- Signup -->
         <section class="signup-section" id="signup">
             <div class="signup-box">
@@ -1197,7 +1283,7 @@ crew = Crew(agents=[agent], tasks=[...])</pre>
         <!-- Footer -->
         <footer>
             <p>
-                Mengram — human-like memory for AI · v2.7.3
+                Mengram — human-like memory for AI · v2.8.0
                 &nbsp;·&nbsp;
                 <a href="https://github.com/alibaizhanov/mengram">GitHub</a>
                 &nbsp;·&nbsp;
@@ -1210,6 +1296,69 @@ crew = Crew(agents=[agent], tasks=[...])</pre>
 
     <script>
         const API_URL = "https://mengram.io";
+
+        // ---- Changelog entries ----
+        // To add a new entry: just add an object to the top of this array.
+        // Tags: "feature", "improvement", "fix"
+        const CHANGELOG = [
+            {
+                date: "2025-02-20",
+                tag: "feature",
+                title: "MCP Resources — Proactive Memory Injection",
+                body: "Agents now automatically receive your Cognitive Profile, active procedures, and pending triggers at session start — no tool call needed. Claude Desktop and Cursor instantly know who you are, your workflows, and your reminders.",
+            },
+            {
+                date: "2025-02-19",
+                tag: "feature",
+                title: "Experience-Driven Procedure Evolution",
+                body: "Procedures automatically improve when you report failures. The system analyzes what went wrong, generates an improved version, and tracks full version history. 3+ similar successes auto-create new procedures.",
+            },
+            {
+                date: "2025-02-19",
+                tag: "feature",
+                title: "Smart Triggers — Memory That Raises Its Hand",
+                body: "Automatic detection of reminders from conversations, contradiction alerts when facts conflict, and workflow pattern recognition. Your AI proactively tells you what it noticed.",
+            },
+            {
+                date: "2025-02-18",
+                tag: "feature",
+                title: "Cognitive Profile — One API Call Personalization",
+                body: "GET /v1/profile generates a ready-to-use system prompt from all 3 memory types. Insert into any LLM for instant personalization. Cached for 1 hour, force-refresh available.",
+            },
+            {
+                date: "2025-02-17",
+                tag: "feature",
+                title: "LangChain, CrewAI & OpenClaw Integrations",
+                body: "Drop-in integrations for all major agent frameworks. LangChain retriever + chat history, 5 CrewAI tools, OpenClaw skill with shell scripts. One install adds 3 memory types.",
+            },
+            {
+                date: "2025-02-16",
+                tag: "improvement",
+                title: "JavaScript SDK — Zero Dependencies",
+                body: "Full-featured JS/TS SDK with typed definitions. Uses native fetch, zero runtime dependencies. All endpoints covered including procedures, triggers, teams, and webhooks.",
+            },
+            {
+                date: "2025-02-15",
+                tag: "feature",
+                title: "Episodic & Procedural Memory",
+                body: "Mengram now extracts and stores 3 memory types from every conversation: semantic (facts), episodic (events with context, outcome, emotional valence), and procedural (workflows with steps).",
+            },
+        ];
+
+        // Render changelog
+        (function renderChangelog() {
+            const list = document.getElementById("changelog-list");
+            if (!list) return;
+            list.innerHTML = CHANGELOG.slice(0, 7).map(e => `
+                <div class="cl-entry">
+                    <div class="cl-date">${e.date}</div>
+                    <div class="cl-body">
+                        <h3><span class="cl-tag ${e.tag}">${e.tag}</span> ${e.title}</h3>
+                        <p>${e.body}</p>
+                    </div>
+                </div>
+            `).join("");
+        })();
 
         function showInstall(tab) {
             document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));

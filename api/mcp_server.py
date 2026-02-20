@@ -306,6 +306,7 @@ def create_mcp_server(brain: MengramBrain) -> "Server":
                 )
                 try:
                     await server.request_context.session.send_resource_updated(uri="memory://profile")
+                    await server.request_context.session.send_resource_updated(uri="memory://recent")
                 except Exception:
                     pass
                 return [TextContent(type="text", text=text)]

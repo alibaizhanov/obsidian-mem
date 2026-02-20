@@ -23,11 +23,12 @@ import sys
 import os
 import json
 import asyncio
+from urllib.parse import unquote
 
 try:
     from mcp.server import Server
     from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent, Resource
+    from mcp.types import Tool, TextContent, Resource, ResourceTemplate
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -38,26 +39,111 @@ from cloud.client import CloudMemory
 def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Server":
     """Create MCP server backed by cloud API."""
 
-    # Build profile from cloud
+    # Build profile from cloud (Cognitive Profile with fallback to entity listing)
     def _get_profile():
+        # Try real Cognitive Profile first (LLM-generated system prompt)
+        try:
+            profile_data = mem.get_profile(user_id=user_id)
+            system_prompt = profile_data.get("system_prompt", "")
+            if system_prompt and profile_data.get("status") == "ok":
+                facts_used = profile_data.get("facts_used", 0)
+                return (
+                    f"# Cognitive Profile\n\n"
+                    f"{system_prompt}\n\n"
+                    f"---\n*Based on {facts_used} facts from memory.*"
+                )
+        except Exception:
+            pass
+
+        # Fallback: basic entity listing
         try:
             memories = mem.get_all(user_id=user_id)
             if not memories:
                 return "Memory is empty. Start conversations and use 'remember' to build knowledge."
 
-            lines = [f"Vault: {len(memories)} entities"]
-            # Group by type
+            lines = [f"# Memory Overview\n\nVault: {len(memories)} entities"]
             by_type = {}
             for m_item in memories:
                 t = m_item.get("type", "unknown")
                 by_type.setdefault(t, []).append(m_item.get("name", "?"))
 
             for t, names in sorted(by_type.items(), key=lambda x: -len(x[1])):
-                lines.append(f"  {t}: {', '.join(names[:15])}")
+                lines.append(f"- **{t}**: {', '.join(names[:15])}")
 
             return "\n".join(lines)
         except Exception as e:
             return f"Error loading profile: {e}"
+
+    def _get_procedures():
+        """Get active procedures formatted as markdown."""
+        try:
+            procs = mem.procedures(user_id=user_id, limit=20)
+            if not procs:
+                return "No learned procedures yet."
+
+            lines = ["# Active Procedures\n"]
+            for p in procs:
+                v = p.get("version", 1)
+                sc = p.get("success_count", 0)
+                fc = p.get("fail_count", 0)
+                total = sc + fc
+                reliability = f"{int(sc / total * 100)}%" if total > 0 else "untested"
+
+                lines.append(f"## {p['name']} (v{v}, {reliability} reliable)")
+                lines.append(f"ID: `{p['id']}`")
+                if p.get("trigger_condition"):
+                    lines.append(f"**When:** {p['trigger_condition']}")
+                if total > 0:
+                    lines.append(f"**Stats:** {sc} successes, {fc} failures")
+                for s in p.get("steps", []):
+                    lines.append(f"{s.get('step', '?')}. **{s.get('action', '')}** — {s.get('detail', '')}")
+                lines.append("")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error loading procedures: {e}"
+
+    def _get_triggers():
+        """Get pending triggers formatted as markdown."""
+        try:
+            triggers = mem.get_triggers(user_id=user_id, include_fired=False, limit=20)
+            if not triggers:
+                return "No pending triggers."
+
+            type_labels = {
+                "reminder": "Reminders",
+                "contradiction": "Contradictions to Resolve",
+                "pattern": "Patterns Detected",
+            }
+
+            lines = ["# Pending Triggers\n"]
+            by_type = {}
+            for t in triggers:
+                ttype = t.get("trigger_type", t.get("type", "unknown"))
+                by_type.setdefault(ttype, []).append(t)
+
+            for ttype, items in by_type.items():
+                label = type_labels.get(ttype, ttype.title())
+                lines.append(f"## {label}\n")
+                for t in items:
+                    title = t.get("title", "Untitled")
+                    detail = t.get("detail", "")
+                    fire_at = t.get("fire_at", "")
+                    trigger_id = t.get("id", "")
+
+                    lines.append(f"- **{title}**")
+                    if detail:
+                        lines.append(f"  {detail}")
+                    if fire_at:
+                        ts = fire_at[:16] if isinstance(fire_at, str) else str(fire_at)[:16]
+                        lines.append(f"  *Due: {ts}*")
+                    if trigger_id:
+                        lines.append(f"  ID: `{trigger_id}`")
+                lines.append("")
+
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error loading triggers: {e}"
 
     profile = _get_profile()
     instructions = (
@@ -92,8 +178,31 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
         return [
             Resource(
                 uri="memory://profile",
-                name="User Knowledge Profile",
-                description="Complete user profile from cloud memory.",
+                name="Cognitive Profile",
+                description="LLM-generated user profile from all memory types — semantic, episodic, procedural. PIN THIS for instant personalization.",
+                mimeType="text/markdown",
+            ),
+            Resource(
+                uri="memory://procedures",
+                name="Active Procedures",
+                description="Learned workflows with steps, trigger conditions, and reliability stats.",
+                mimeType="text/markdown",
+            ),
+            Resource(
+                uri="memory://triggers",
+                name="Pending Triggers",
+                description="Smart triggers: reminders, contradictions, and patterns detected in memory. Surface these proactively.",
+                mimeType="text/markdown",
+            ),
+        ]
+
+    @server.list_resource_templates()
+    async def list_resource_templates():
+        return [
+            ResourceTemplate(
+                uriTemplate="memory://entity/{name}",
+                name="Entity Details",
+                description="Full details for a specific entity — facts, relations, and knowledge with artifacts.",
                 mimeType="text/markdown",
             ),
         ]
@@ -101,8 +210,48 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
     @server.read_resource()
     async def read_resource(uri):
         uri_str = str(uri)
+
         if uri_str == "memory://profile":
             return _get_profile()
+
+        elif uri_str == "memory://procedures":
+            return _get_procedures()
+
+        elif uri_str == "memory://triggers":
+            return _get_triggers()
+
+        elif uri_str.startswith("memory://entity/"):
+            entity_name = unquote(uri_str.replace("memory://entity/", ""))
+            entity = mem.get(entity_name, user_id=user_id)
+            if not entity:
+                return f"Entity '{entity_name}' not found in memory."
+
+            lines = [f"# {entity.get('entity', entity_name)} ({entity.get('type', 'unknown')})\n"]
+
+            facts = entity.get("facts", [])
+            if facts:
+                lines.append("## Facts")
+                for f in facts:
+                    lines.append(f"- {f}")
+
+            relations = entity.get("relations", [])
+            if relations:
+                lines.append("\n## Relations")
+                for r in relations:
+                    arrow = "\u2192" if r.get("direction") == "outgoing" else "\u2190"
+                    lines.append(f"- {arrow} {r.get('type', '')}: {r.get('target', '')}")
+
+            knowledge = entity.get("knowledge", [])
+            if knowledge:
+                lines.append("\n## Knowledge")
+                for k in knowledge:
+                    lines.append(f"\n**[{k.get('type', '')}] {k.get('title', '')}**")
+                    lines.append(k.get("content", ""))
+                    if k.get("artifact"):
+                        lines.append(f"```\n{k['artifact']}\n```")
+
+            return "\n".join(lines)
+
         return f"Unknown resource: {uri_str}"
 
     # ---- Tools ----
@@ -249,6 +398,11 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
                         f"Updated: {', '.join(result.get('updated', [])) or 'none'}\n"
                         f"Knowledge: {result.get('knowledge_count', 0)}"
                     )
+                try:
+                    await server.request_context.session.send_resource_updated(uri="memory://profile")
+                    await server.request_context.session.send_resource_updated(uri="memory://procedures")
+                except Exception:
+                    pass
                 return [TextContent(type="text", text=text)]
 
             elif name == "remember_text":
@@ -263,6 +417,11 @@ def create_cloud_mcp_server(mem: CloudMemory, user_id: str = "default") -> "Serv
                         f"Created: {', '.join(result.get('created', [])) or 'none'}\n"
                         f"Updated: {', '.join(result.get('updated', [])) or 'none'}"
                     )
+                try:
+                    await server.request_context.session.send_resource_updated(uri="memory://profile")
+                    await server.request_context.session.send_resource_updated(uri="memory://procedures")
+                except Exception:
+                    pass
                 return [TextContent(type="text", text=text)]
 
             elif name == "recall":
