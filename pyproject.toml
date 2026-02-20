@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mengram-ai"
-version = "2.10.0"
+version = "2.11.0"
 description = "Human-like memory for AI — semantic, episodic & procedural. Experience-driven procedures, Cognitive Profile, unified search, memory agents. Free open-source Mem0 alternative."
 readme = "README.md"
 license = {text = "Apache-2.0"}
