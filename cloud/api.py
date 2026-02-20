@@ -963,6 +963,15 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     @app.post("/v1/search", tags=["Search"])
     async def search(req: SearchRequest, user_id: str = Depends(auth)):
         """Semantic search across memories with LLM re-ranking."""
+        import hashlib as _hashlib
+
+        # ---- Redis cache: same query → instant response ----
+        cache_key = f"search:{user_id}:{_hashlib.md5(f'{req.query}:{req.limit}'.encode()).hexdigest()}"
+        cached = store.cache.get(cache_key)
+        if cached:
+            store.log_usage(user_id, "search")
+            return {"results": cached}
+
         embedder = get_embedder()
 
         # Search with more candidates for re-ranking
@@ -979,8 +988,8 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         else:
             results = store.search_text(user_id, req.query, top_k=search_limit)
 
-        # LLM re-ranking: filter to only relevant results
-        if results and len(results) > 1:
+        # LLM re-ranking: skip if ≤ 3 results (not enough to rerank)
+        if results and len(results) > 3:
             results = rerank_results(req.query, results)
 
         # Limit to requested count
@@ -990,7 +999,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         reflections = store.get_reflections(user_id)
         if reflections:
             query_lower = req.query.lower()
-            matching = [r for r in reflections if 
+            matching = [r for r in reflections if
                        query_lower in r["content"].lower() or
                        query_lower in r["title"].lower() or
                        any(w in r["content"].lower() for w in query_lower.split() if len(w) > 3)]
@@ -1007,6 +1016,8 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                     "knowledge": [],
                 })
 
+        # Cache results in Redis (TTL 30s)
+        store.cache.set(cache_key, results, ttl=30)
         store.log_usage(user_id, "search")
 
         return {"results": results}
@@ -1604,6 +1615,15 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     async def search_all(req: SearchRequest, user_id: str = Depends(auth)):
         """Search across all memory types: semantic, episodic, and procedural.
         Returns categorized results from each memory system."""
+        import hashlib as _hashlib
+
+        # ---- Redis cache ----
+        cache_key = f"searchall:{user_id}:{_hashlib.md5(f'{req.query}:{req.limit}'.encode()).hexdigest()}"
+        cached = store.cache.get(cache_key)
+        if cached:
+            store.log_usage(user_id, "search_all")
+            return cached
+
         embedder = get_embedder()
         ep_limit = max(req.limit // 2, 3)
         proc_limit = max(req.limit // 2, 3)
@@ -1631,17 +1651,21 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
             procedural = store.search_procedures_text(
                 user_id, req.query, top_k=proc_limit)
 
-        # Re-rank semantic
-        if semantic and len(semantic) > 1:
+        # Re-rank semantic: skip if ≤ 3 results
+        if semantic and len(semantic) > 3:
             semantic = rerank_results(req.query, semantic)
         semantic = semantic[:req.limit]
 
-        store.log_usage(user_id, "search_all")
-        return {
+        result = {
             "semantic": semantic,
             "episodic": episodic,
             "procedural": procedural,
         }
+
+        # Cache in Redis (TTL 30s)
+        store.cache.set(cache_key, result, ttl=30)
+        store.log_usage(user_id, "search_all")
+        return result
 
     # ============================================
     # Smart Memory Triggers (v2.6)
