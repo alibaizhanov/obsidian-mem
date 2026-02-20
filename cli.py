@@ -357,6 +357,83 @@ def cmd_api(args):
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
+def cmd_import(args):
+    """Import existing data into memory"""
+    import_type = args.import_type
+    if not import_type:
+        print("Usage: mengram import {chatgpt,obsidian,files} <path>")
+        print("  mengram import chatgpt ~/Downloads/chatgpt-export.zip")
+        print("  mengram import obsidian ~/Documents/MyVault")
+        print("  mengram import files notes/*.md")
+        sys.exit(1)
+
+    from importer import (
+        import_chatgpt, import_obsidian, import_files, RateLimiter,
+    )
+
+    # --- Resolve add_fn ---
+    if getattr(args, "cloud", False):
+        api_key = os.environ.get("MENGRAM_API_KEY", "")
+        if not api_key:
+            print("❌ Set MENGRAM_API_KEY environment variable")
+            sys.exit(1)
+
+        from cloud.client import CloudMemory
+        mem = CloudMemory(api_key=api_key)
+        limiter = RateLimiter(max_per_minute=100)
+
+        def add_fn(messages):
+            limiter.wait_if_needed()
+            return mem.add(messages)
+
+        print("☁️  Importing to cloud memory...")
+    else:
+        config_path = str(DEFAULT_CONFIG)
+        if not Path(config_path).exists():
+            print("❌ Run: mengram init  (or use --cloud for cloud API)")
+            sys.exit(1)
+
+        from engine.brain import create_brain
+        brain = create_brain(config_path)
+        add_fn = brain.remember
+        print("💾 Importing to local memory...")
+
+    # --- Progress callback ---
+    def on_progress(current, total, title):
+        pct = int(current / total * 100) if total else 0
+        bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+        print(f"\r  {bar} {pct}% ({current}/{total}) {title[:40]}", end="", flush=True)
+
+    # --- Run importer ---
+    print()
+    if import_type == "chatgpt":
+        result = import_chatgpt(args.path, add_fn,
+                                chunk_size=args.chunk_size, on_progress=on_progress)
+    elif import_type == "obsidian":
+        result = import_obsidian(args.path, add_fn,
+                                 chunk_chars=args.chunk_chars, on_progress=on_progress)
+    elif import_type == "files":
+        result = import_files(args.paths, add_fn,
+                              chunk_chars=args.chunk_chars, on_progress=on_progress)
+    else:
+        print(f"❌ Unknown import type: {import_type}")
+        sys.exit(1)
+
+    # --- Summary ---
+    print(f"\n\n{'='*50}")
+    print(f"✅ Import complete!\n")
+    print(f"   Found:    {result.conversations_found} {'conversations' if import_type == 'chatgpt' else 'files'}")
+    print(f"   Imported: {result.chunks_sent} chunks")
+    print(f"   Entities: {len(result.entities_created)}")
+    print(f"   Time:     {result.duration_seconds:.1f}s")
+    if result.errors:
+        print(f"\n   ⚠️  {len(result.errors)} errors:")
+        for err in result.errors[:5]:
+            print(f"      - {err}")
+        if len(result.errors) > 5:
+            print(f"      ... and {len(result.errors) - 5} more")
+
+
 def cmd_web(args):
     """Start Web UI — chat + knowledge graph"""
     config_path = args.config or str(DEFAULT_CONFIG)
@@ -430,6 +507,25 @@ def main():
     p_api.add_argument("--host", default="0.0.0.0", help="Host (default: 0.0.0.0)")
     p_api.add_argument("--port", type=int, default=8420, help="Port (default: 8420)")
 
+    # import
+    p_import = sub.add_parser("import", help="Import existing data into memory")
+    import_sub = p_import.add_subparsers(dest="import_type")
+
+    p_chatgpt = import_sub.add_parser("chatgpt", help="Import ChatGPT export ZIP")
+    p_chatgpt.add_argument("path", help="Path to ChatGPT export ZIP file")
+    p_chatgpt.add_argument("--chunk-size", type=int, default=20, dest="chunk_size")
+    p_chatgpt.add_argument("--cloud", action="store_true", help="Use cloud API")
+
+    p_obsidian = import_sub.add_parser("obsidian", help="Import Obsidian vault")
+    p_obsidian.add_argument("path", help="Path to Obsidian vault directory")
+    p_obsidian.add_argument("--chunk-chars", type=int, default=4000, dest="chunk_chars")
+    p_obsidian.add_argument("--cloud", action="store_true", help="Use cloud API")
+
+    p_files = import_sub.add_parser("files", help="Import text/markdown files")
+    p_files.add_argument("paths", nargs="+", help="File paths")
+    p_files.add_argument("--chunk-chars", type=int, default=4000, dest="chunk_chars")
+    p_files.add_argument("--cloud", action="store_true", help="Use cloud API")
+
     # web
     p_web = sub.add_parser("web", help="Start Web UI (chat + knowledge graph)")
     p_web.add_argument("--config", help="Config path")
@@ -448,6 +544,8 @@ def main():
         cmd_stats(args)
     elif args.command == "api":
         cmd_api(args)
+    elif args.command == "import":
+        cmd_import(args)
     elif args.command == "web":
         cmd_web(args)
     else:

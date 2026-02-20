@@ -70,7 +70,7 @@ mengram = "cli:main"
 include = ["engine*", "api*", "cloud*", "integrations*"]
 
 [tool.setuptools]
-py-modules = ["mengram", "mengram_middleware", "cli"]
+py-modules = ["mengram", "mengram_middleware", "cli", "importer"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

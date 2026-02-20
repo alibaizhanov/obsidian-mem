@@ -514,3 +514,62 @@ class CloudMemory:
     def dismiss_trigger(self, trigger_id: int) -> dict:
         """Dismiss a trigger without sending webhook."""
         return self._request("DELETE", f"/v1/triggers/{trigger_id}")
+
+    # ---- Import ----
+
+    def import_chatgpt(self, zip_path: str, user_id: str = "default",
+                       chunk_size: int = 20, on_progress=None) -> dict:
+        """
+        Import ChatGPT export ZIP into memory.
+
+        Args:
+            zip_path: Path to ChatGPT export ZIP file
+            user_id: User identifier
+            chunk_size: Max messages per chunk (default 20)
+            on_progress: Optional callback(current, total, title)
+
+        Returns:
+            ImportResult as dict
+        """
+        from importer import import_chatgpt as _import
+        add_fn = lambda msgs: self.add(msgs, user_id=user_id)
+        return _import(zip_path, add_fn, chunk_size=chunk_size,
+                       on_progress=on_progress).__dict__
+
+    def import_obsidian(self, vault_path: str, user_id: str = "default",
+                        chunk_chars: int = 4000, on_progress=None) -> dict:
+        """
+        Import Obsidian vault into memory.
+
+        Args:
+            vault_path: Path to Obsidian vault directory
+            user_id: User identifier
+            chunk_chars: Max characters per text chunk (default 4000)
+            on_progress: Optional callback(current, total, title)
+
+        Returns:
+            ImportResult as dict
+        """
+        from importer import import_obsidian as _import
+        add_fn = lambda msgs: self.add(msgs, user_id=user_id)
+        return _import(vault_path, add_fn, chunk_chars=chunk_chars,
+                       on_progress=on_progress).__dict__
+
+    def import_files(self, paths: list, user_id: str = "default",
+                     chunk_chars: int = 4000, on_progress=None) -> dict:
+        """
+        Import text/markdown files into memory.
+
+        Args:
+            paths: List of file paths
+            user_id: User identifier
+            chunk_chars: Max characters per text chunk (default 4000)
+            on_progress: Optional callback(current, total, title)
+
+        Returns:
+            ImportResult as dict
+        """
+        from importer import import_files as _import
+        add_fn = lambda msgs: self.add(msgs, user_id=user_id)
+        return _import(paths, add_fn, chunk_chars=chunk_chars,
+                       on_progress=on_progress).__dict__
