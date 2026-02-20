@@ -1516,9 +1516,11 @@ class CloudStore:
             graph_entities = self._graph_expand(
                 cur, user_id, seed_ids, max_hops=graph_depth, max_rrf=max_rrf
             )
+            graph_expanded_ids = set()
             for eid, info in graph_entities.items():
                 rrf_scores[eid] = info["score"]
                 entity_info[eid] = (info["name"], info["type"], info.get("updated_at"))
+                graph_expanded_ids.add(eid)
 
             # ========== STAGE 5: Recency boost + build results ==========
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -1564,6 +1566,7 @@ class CloudStore:
                     "facts": [],
                     "relations": [],
                     "knowledge": [],
+                    "_graph": eid in graph_expanded_ids,
                 }
 
             # Batch facts (exclude archived) — sorted by importance
@@ -3886,6 +3889,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
             graph_entities = self._graph_expand(
                 cur, user_id, seed_ids, max_hops=graph_depth, max_rrf=max_rrf_val
             )
+            graph_expanded_ids = set()
             for eid, info in graph_entities.items():
                 if eid not in rrf_scores:
                     rrf_scores[eid] = info["score"]
@@ -3894,6 +3898,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                         "updated_at": info.get("updated_at"),
                         "team_shared": False,
                     }
+                    graph_expanded_ids.add(eid)
 
             # Sort and limit after expansion
             sorted_results = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
@@ -3977,6 +3982,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                     "relations": relations_map.get(eid, []),
                     "knowledge": knowledge_map.get(eid, []),
                     "team_shared": info.get("team_shared", False),
+                    "_graph": eid in graph_expanded_ids,
                 })
 
             return results

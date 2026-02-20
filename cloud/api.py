@@ -1030,12 +1030,23 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         else:
             results = store.search_text(user_id, req.query, top_k=search_limit)
 
-        # LLM re-ranking: skip if ≤ 3 results (not enough to rerank)
-        if results and len(results) > 3:
-            results = rerank_results(req.query, results)
+        # Split direct matches from graph-expanded entities
+        direct = [r for r in results if not r.get("_graph")]
+        graph = [r for r in results if r.get("_graph")]
+
+        # LLM re-ranking: only rerank direct matches (graph entities are logically relevant)
+        if direct and len(direct) > 3:
+            direct = rerank_results(req.query, direct)
+
+        # Merge: direct first, then graph-expanded
+        results = direct + graph
 
         # Limit to requested count
         results = results[:req.limit]
+
+        # Clean up internal flag
+        for r in results:
+            r.pop("_graph", None)
 
         # Prepend matching reflections for richer context
         reflections = store.get_reflections(user_id)
@@ -1694,10 +1705,14 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
             procedural = store.search_procedures_text(
                 user_id, req.query, top_k=proc_limit)
 
-        # Re-rank semantic: skip if ≤ 3 results
-        if semantic and len(semantic) > 3:
-            semantic = rerank_results(req.query, semantic)
-        semantic = semantic[:req.limit]
+        # Split direct from graph-expanded, rerank only direct
+        direct_sem = [r for r in semantic if not r.get("_graph")]
+        graph_sem = [r for r in semantic if r.get("_graph")]
+        if direct_sem and len(direct_sem) > 3:
+            direct_sem = rerank_results(req.query, direct_sem)
+        semantic = (direct_sem + graph_sem)[:req.limit]
+        for r in semantic:
+            r.pop("_graph", None)
 
         result = {
             "semantic": semantic,
