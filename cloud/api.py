@@ -868,31 +868,73 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                         # ---- Auto-link episode to existing procedure ----
                         if ep_embedding:
                             try:
+                                from cloud.evolution import EvolutionEngine
+
                                 similar_procs = store.search_procedures_vector(
-                                    user_id, ep_embedding, top_k=1)
-                                if similar_procs and similar_procs[0]["score"] >= 0.75:
-                                    matched_proc = similar_procs[0]
+                                    user_id, ep_embedding, top_k=3)
+
+                                # Combined scoring: vector + entity + keyword overlap
+                                ep_text = f"{ep.summary}. {ep.context or ''} {ep.outcome or ''}"
+                                best_proc = None
+                                best_score = 0.0
+
+                                for sp in (similar_procs or []):
+                                    proc_text = f"{sp['name']}. {sp.get('trigger_condition') or ''}. "
+                                    proc_text += "; ".join(
+                                        s.get("action", "") for s in (sp.get("steps") or [])[:10]
+                                    )
+                                    score = EvolutionEngine.compute_link_score(
+                                        vector_similarity=sp["score"],
+                                        episode_participants=ep.participants or [],
+                                        procedure_entity_names=sp.get("entity_names") or [],
+                                        episode_text=ep_text,
+                                        procedure_text=proc_text,
+                                    )
+                                    if score > best_score:
+                                        best_score = score
+                                        best_proc = sp
+
+                                if best_proc and best_score >= 0.55:
                                     # Link episode to procedure
                                     store.link_episodes_to_procedure(
-                                        [episode_id], matched_proc["id"])
+                                        [episode_id], best_proc["id"])
 
-                                    is_negative = ep.emotional_valence == "negative"
-                                    if is_negative:
+                                    is_failure = EvolutionEngine.is_failure_episode(
+                                        ep.emotional_valence,
+                                        outcome=ep.outcome or "",
+                                        summary=ep.summary,
+                                        context=ep.context or "",
+                                    )
+                                    if is_failure:
                                         # Failure → trigger evolution
-                                        from cloud.evolution import EvolutionEngine
                                         evo = EvolutionEngine(store, embedder, extractor.llm)
                                         evo_result = evo.evolve_on_failure(
-                                            user_id, matched_proc["id"], episode_id,
+                                            user_id, best_proc["id"], episode_id,
                                             ep.context or ep.summary)
                                         if evo_result:
                                             logger.info(
-                                                f"🔄 Auto-evolved '{matched_proc['name']}' "
+                                                f"🔄 Auto-evolved '{best_proc['name']}' "
                                                 f"v{evo_result['old_version']}→v{evo_result['new_version']} "
                                                 f"from episode")
+                                            # Create procedure_evolved trigger
+                                            store.create_procedure_evolved_trigger(
+                                                user_id=user_id,
+                                                procedure_name=best_proc["name"],
+                                                old_version=evo_result["old_version"],
+                                                new_version=evo_result["new_version"],
+                                                change_description=evo_result.get("change_description", ""),
+                                                procedure_id=evo_result["new_procedure_id"],
+                                            )
+                                            # Cross-procedure learning
+                                            evo.suggest_cross_procedure_updates(
+                                                user_id,
+                                                evo_result["new_procedure_id"],
+                                                evo_result.get("change_description", ""),
+                                            )
                                     else:
                                         # Success → increment success count
                                         store.procedure_feedback(
-                                            user_id, matched_proc["id"], success=True)
+                                            user_id, best_proc["id"], success=True)
 
                                     episodes_linked += 1
                             except Exception as e:
@@ -979,6 +1021,15 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                         if evo_result:
                             logger.info(f"🔄 Auto-created procedure '{evo_result['name']}' "
                                        f"from {evo_result['source_episode_count']} episodes")
+                            # Notify user about auto-created procedure
+                            store.create_procedure_evolved_trigger(
+                                user_id=user_id,
+                                procedure_name=evo_result["name"],
+                                old_version=0,
+                                new_version=1,
+                                change_description=f"Auto-created from {evo_result['source_episode_count']} similar episodes",
+                                procedure_id=evo_result["procedure_id"],
+                            )
                     except Exception as e:
                         logger.error(f"⚠️ Experience-driven procedure detection failed: {e}")
             except Exception as e:

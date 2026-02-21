@@ -2975,6 +2975,40 @@ SEMANTIC MEMORY (facts about the user):
                 })
             return results
 
+    def get_unlinked_actionable_episodes(self, user_id: str, limit: int = 50) -> list[dict]:
+        """Get recent episodes not linked to any procedure, excluding failures.
+
+        Returns positive, neutral, and mixed episodes for pattern detection.
+        Unlike get_unlinked_positive_episodes(), this includes neutral episodes
+        which represent the majority of user activity.
+        """
+        with self._cursor(dict_cursor=True) as cur:
+            cur.execute(
+                """SELECT id, summary, context, outcome, participants,
+                          emotional_valence, importance, created_at
+                   FROM episodes
+                   WHERE user_id = %s
+                     AND linked_procedure_id IS NULL
+                     AND emotional_valence IN ('positive', 'neutral', 'mixed')
+                     AND (expires_at IS NULL OR expires_at > NOW())
+                   ORDER BY created_at DESC
+                   LIMIT %s""",
+                (user_id, limit)
+            )
+            results = []
+            for row in cur.fetchall():
+                results.append({
+                    "id": str(row["id"]),
+                    "summary": row["summary"],
+                    "context": row["context"],
+                    "outcome": row["outcome"],
+                    "participants": row["participants"] or [],
+                    "emotional_valence": row["emotional_valence"],
+                    "importance": round(float(row["importance"] or 0.5), 2),
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                })
+            return results
+
     def link_episodes_to_procedure(self, episode_ids: list[str], procedure_id: str):
         """Link episodes to a procedure (after auto-creating from pattern)."""
         if not episode_ids:
@@ -4254,7 +4288,92 @@ Be specific and personal, not generic. No markdown, just JSON."""
             if tid > 0:
                 created += 1
 
+        # ---- At-risk procedures: 3+ failures in last 7 days ----
+        try:
+            with self._cursor(dict_cursor=True) as cur:
+                cur.execute("""
+                    SELECT p.id, p.name, p.success_count, p.fail_count,
+                           COUNT(e.id) AS recent_failures
+                    FROM procedures p
+                    LEFT JOIN episodes e ON e.linked_procedure_id = p.id
+                        AND e.emotional_valence = 'negative'
+                        AND e.created_at > NOW() - INTERVAL '7 days'
+                    WHERE p.user_id = %s AND p.is_current = TRUE
+                    GROUP BY p.id
+                    HAVING COUNT(e.id) >= 3
+                """, (user_id,))
+                at_risk = cur.fetchall()
+            for proc in at_risk:
+                title = f"At-risk workflow: {proc['name']} ({proc['recent_failures']} failures this week)"
+                detail = (
+                    f"Workflow \"{proc['name']}\" has failed {proc['recent_failures']} times "
+                    f"in the last 7 days. It may need a manual review or restructuring."
+                )
+                tid = self.create_trigger(
+                    user_id=user_id,
+                    trigger_type="procedure_at_risk",
+                    title=title,
+                    detail=detail,
+                    source_type="procedure",
+                    source_id=str(proc["id"]),
+                )
+                if tid > 0:
+                    created += 1
+        except Exception as e:
+            logger.error(f"⚠️ At-risk trigger detection failed: {e}")
+
         return created
+
+    def create_procedure_evolved_trigger(self, user_id: str,
+                                          procedure_name: str,
+                                          old_version: int,
+                                          new_version: int,
+                                          change_description: str,
+                                          procedure_id: str) -> int:
+        """Create a trigger notifying the user that a procedure evolved."""
+        title = f"Procedure updated: {procedure_name} v{old_version} → v{new_version}"
+        detail = (
+            f"Your workflow \"{procedure_name}\" was automatically improved based on "
+            f"your recent experience.\n"
+            f"What changed: {change_description}\n"
+            f"Review it in your procedures list."
+        )
+        tid = self.create_trigger(
+            user_id=user_id,
+            trigger_type="procedure_evolved",
+            title=title,
+            detail=detail,
+            source_type="procedure",
+            source_id=procedure_id,
+        )
+        return 1 if tid > 0 else 0
+
+    def create_procedure_suggestion_trigger(self, user_id: str,
+                                             suggestion_name: str,
+                                             suggestion_steps: list[dict],
+                                             episode_count: int,
+                                             confidence: float) -> int:
+        """Create a trigger suggesting a procedure the user might want to formalize.
+
+        Called when pattern detection finds a cluster with confidence 0.4-0.6
+        (too low to auto-create, but worth surfacing to the user).
+        """
+        steps_desc = " → ".join(s.get("action", "") for s in suggestion_steps[:5])
+        title = f"Workflow detected: {suggestion_name}"
+        detail = (
+            f"Based on {episode_count} similar episodes, you may have a repeatable workflow:\n"
+            f"Steps: {steps_desc}\n"
+            f"Confidence: {confidence:.0%}\n"
+            f"Say 'yes' to create this as a procedure, or dismiss."
+        )
+        tid = self.create_trigger(
+            user_id=user_id,
+            trigger_type="procedure_suggestion",
+            title=title,
+            detail=detail,
+            source_type="episode",
+        )
+        return 1 if tid > 0 else 0
 
     def process_all_triggers(self) -> dict:
         """Process all pending triggers across all users. Returns stats."""

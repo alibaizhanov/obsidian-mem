@@ -1,15 +1,45 @@
 """
-Mengram Evolution Engine — Experience-Driven Procedures (v2.7)
+Mengram Evolution Engine — Experience-Driven Procedures (v2.12)
 
 Closed feedback loop between episodic and procedural memory:
 - Failure cycle: procedure fails → episode created → LLM analyzes → procedure evolves
-- Success cycle: 3+ similar positive episodes → LLM extracts pattern → auto-create procedure
+- Success cycle: 2+ similar episodes → LLM extracts pattern → auto-create procedure
+- Auto-detection: implicit workflows, failure parsing, cross-procedure learning
+- Proactive triggers: procedure_evolved, procedure_suggestion, procedure_at_risk
 """
 
 import json
 import logging
 
 logger = logging.getLogger("mengram")
+
+
+# ---- Failure Detection Constants ----
+
+FAILURE_INDICATORS = [
+    "failed", "failure", "error", "broke", "broken", "crash", "crashed",
+    "bug", "issue", "problem", "exception", "timeout", "timed out",
+    "doesn't work", "didn't work", "not working", "stopped working",
+    "couldn't", "unable to", "can't", "cannot", "rejected", "denied",
+    "500", "404", "403", "rollback", "reverted", "downtime",
+    "lost data", "corrupted", "panic", "segfault", "oom", "out of memory",
+    "killed", "aborted", "hung", "stuck", "deadlock", "memory leak",
+]
+
+FAILURE_NEGATORS = [
+    "fixed", "resolved", "solved", "no error", "no failure",
+    "worked", "works now", "succeeded", "recovered", "passing",
+    "no issues", "all good", "went well", "successful",
+]
+
+STOP_WORDS = frozenset({
+    "the", "and", "for", "with", "that", "this", "from", "have",
+    "been", "were", "will", "what", "when", "where", "which",
+    "then", "than", "into", "also", "just", "about", "some",
+    "would", "could", "should", "their", "there", "these", "those",
+    "your", "they", "them", "very", "more", "after", "before",
+    "each", "other", "over", "under", "only", "most", "such",
+})
 
 
 # ---- LLM Prompts ----
@@ -47,15 +77,22 @@ Return ONLY valid JSON (no markdown fences):
   }}
 }}"""
 
-DETECT_PATTERN_PROMPT = """You are a workflow extraction assistant. Analyze these successful episodes and extract a common repeatable procedure if one exists.
+DETECT_PATTERN_PROMPT = """You are a workflow extraction assistant. Analyze these episodes and extract a common repeatable procedure if one exists.
 
 EPISODES:
 {episodes_text}
 
 Rules:
-- Only extract a procedure if there is a clear repeatable pattern across 3+ episodes
+- Extract a procedure if there is a clear repeatable pattern across 2+ episodes
 - The procedure must have 2+ concrete steps
 - Name it descriptively based on what the user does
+- Focus on ACTIONS the user took, not just topics discussed
+- If episodes describe the same workflow done on different occasions, that IS a pattern
+- Set confidence: 0.0-1.0 (how confident you are this is a real repeatable workflow)
+  - 0.8+ = very clear, repeated workflow with explicit steps
+  - 0.6-0.8 = likely a workflow, steps can be inferred from actions
+  - 0.4-0.6 = possible workflow, but steps are vague or only 2 episodes
+  - <0.4 = not enough evidence
 - If no clear pattern exists, return {{"procedure": null}}
 
 Return ONLY valid JSON (no markdown fences):
@@ -67,7 +104,8 @@ Return ONLY valid JSON (no markdown fences):
       {{"step": 1, "action": "...", "detail": "..."}},
       {{"step": 2, "action": "...", "detail": "..."}}
     ],
-    "entities": ["related entity names"]
+    "entities": ["related entity names"],
+    "confidence": 0.0
   }}
 }}
 
@@ -182,18 +220,23 @@ class EvolutionEngine:
             return None
 
     def detect_and_create_from_episodes(self, user_id: str) -> dict | None:
-        """Find clusters of similar positive episodes and auto-create procedures.
+        """Find clusters of similar episodes and auto-create procedures.
 
-        Looks for 3+ positive episodes that aren't linked to any procedure,
-        uses embedding similarity to cluster them, then asks LLM to extract
-        a common workflow.
+        Looks for 2+ actionable episodes (positive, neutral, mixed) that aren't
+        linked to any procedure, clusters by embedding similarity, then asks LLM
+        to extract a common workflow.
+
+        Confidence-based behavior:
+        - confidence >= 0.6: auto-create procedure
+        - confidence 0.4-0.6: create suggestion trigger (user decides)
+        - confidence < 0.4: skip
 
         Returns:
             Dict with created procedure info, or None if no pattern found.
         """
-        # 1. Get unlinked positive episodes
-        episodes = self.store.get_unlinked_positive_episodes(user_id, limit=30)
-        if len(episodes) < 3:
+        # 1. Get unlinked actionable episodes (positive + neutral + mixed)
+        episodes = self.store.get_unlinked_actionable_episodes(user_id, limit=50)
+        if len(episodes) < 2:
             return None
 
         # 2. Try to find clusters using embeddings
@@ -201,11 +244,11 @@ class EvolutionEngine:
             clusters = self._cluster_episodes_by_embedding(episodes)
         else:
             # Fallback: treat all episodes as one group
-            clusters = [episodes] if len(episodes) >= 3 else []
+            clusters = [episodes] if len(episodes) >= 2 else []
 
-        # 3. For each cluster >= 3, try to extract a procedure
+        # 3. For each cluster >= 2, try to extract a procedure
         for cluster in clusters:
-            if len(cluster) < 3:
+            if len(cluster) < 2:
                 continue
 
             episodes_text = "\n\n".join(
@@ -228,8 +271,27 @@ class EvolutionEngine:
                 if not proc_data.get("name") or not proc_data.get("steps"):
                     continue
 
-                # 4. Create the procedure
+                confidence = float(proc_data.get("confidence", 1.0))
                 episode_ids = [ep["id"] for ep in cluster]
+
+                # Low confidence: skip entirely
+                if confidence < 0.4:
+                    continue
+
+                # Medium confidence: suggest, don't auto-create
+                if confidence < 0.6:
+                    self.store.create_procedure_suggestion_trigger(
+                        user_id=user_id,
+                        suggestion_name=proc_data["name"],
+                        suggestion_steps=proc_data["steps"],
+                        episode_count=len(episode_ids),
+                        confidence=confidence,
+                    )
+                    logger.info(f"💡 Procedure suggestion trigger: {proc_data['name']} "
+                               f"(confidence={confidence:.0%}, {len(episode_ids)} episodes)")
+                    continue
+
+                # High confidence (>= 0.6): auto-create procedure
                 proc_id = self.store.save_procedure(
                     user_id=user_id,
                     name=proc_data["name"],
@@ -278,7 +340,7 @@ class EvolutionEngine:
         return None
 
     def _cluster_episodes_by_embedding(self, episodes: list[dict],
-                                       similarity_threshold: float = 0.75) -> list[list[dict]]:
+                                       similarity_threshold: float = 0.65) -> list[list[dict]]:
         """Cluster episodes by embedding similarity using a simple greedy approach.
 
         For each episode, compute embedding and group with the most similar existing cluster.
@@ -324,6 +386,139 @@ class EvolutionEngine:
         if norm_a == 0 or norm_b == 0:
             return 0.0
         return dot / (norm_a * norm_b)
+
+    @staticmethod
+    def compute_link_score(
+        vector_similarity: float,
+        episode_participants: list[str],
+        procedure_entity_names: list[str],
+        episode_text: str,
+        procedure_text: str,
+    ) -> float:
+        """Combined scoring for episode→procedure linking.
+
+        Three signals:
+        1. Vector cosine similarity (0-1) — semantic similarity
+        2. Entity overlap ratio (0-1) — shared named entities (Jaccard)
+        3. Keyword overlap ratio (0-1) — shared significant words (Jaccard)
+
+        Formula: 0.5 * vector + 0.3 * entity_overlap + 0.2 * keyword_overlap
+        Threshold for linking: >= 0.55 (applied by caller)
+        """
+        vec_score = max(0.0, vector_similarity)
+
+        # Entity overlap (Jaccard)
+        ep_entities = {e.lower().strip() for e in episode_participants if e}
+        proc_entities = {e.lower().strip() for e in procedure_entity_names if e}
+        if ep_entities and proc_entities:
+            intersection = ep_entities & proc_entities
+            union = ep_entities | proc_entities
+            entity_score = len(intersection) / len(union)
+        else:
+            entity_score = 0.0
+
+        # Keyword overlap (Jaccard, words > 3 chars minus stop words)
+        def _keywords(text: str) -> set[str]:
+            return {
+                w.lower().strip(".,;:!?()[]{}\"'-")
+                for w in text.split() if len(w) > 3
+            } - STOP_WORDS
+
+        ep_kw = _keywords(episode_text)
+        proc_kw = _keywords(procedure_text)
+        if ep_kw and proc_kw:
+            intersection = ep_kw & proc_kw
+            union = ep_kw | proc_kw
+            keyword_score = len(intersection) / len(union)
+        else:
+            keyword_score = 0.0
+
+        return round(0.5 * vec_score + 0.3 * entity_score + 0.2 * keyword_score, 4)
+
+    @staticmethod
+    def is_failure_episode(emotional_valence: str, outcome: str = "",
+                           summary: str = "", context: str = "") -> bool:
+        """Determine if an episode represents a failure.
+
+        Checks:
+        1. emotional_valence == "negative" → always True (primary signal)
+        2. emotional_valence == "positive" → always False
+        3. For neutral/mixed: scan outcome/summary/context for failure indicators
+        4. Negators override indicators ("fixed the error" is NOT a failure)
+        """
+        if emotional_valence == "negative":
+            return True
+        if emotional_valence == "positive":
+            return False
+
+        # Neutral/mixed: scan text
+        text = f"{outcome or ''} {summary or ''} {context or ''}".lower()
+
+        # Negators override — if the failure was resolved, it's not a failure
+        for negator in FAILURE_NEGATORS:
+            if negator in text:
+                return False
+
+        # Check for failure indicators
+        for indicator in FAILURE_INDICATORS:
+            if indicator in text:
+                return True
+
+        return False
+
+    def suggest_cross_procedure_updates(self, user_id: str,
+                                          evolved_procedure_id: str,
+                                          change_description: str) -> int:
+        """After procedure A evolves, suggest updates to related procedures.
+
+        Finds procedures sharing >= 20% entity overlap with the evolved procedure
+        and creates suggestion triggers for the user to review.
+
+        Returns:
+            Number of suggestion triggers created.
+        """
+        # 1. Get the evolved procedure
+        proc = self.store.get_procedure_by_id(user_id, evolved_procedure_id)
+        if not proc or not proc.get("entity_names"):
+            return 0
+
+        evolved_entities = {e.lower().strip() for e in proc["entity_names"] if e}
+        if not evolved_entities:
+            return 0
+
+        # 2. Get all current procedures for this user
+        all_procs = self.store.get_procedures(user_id, limit=50)
+        suggestions = 0
+
+        for other in all_procs:
+            if other["id"] == evolved_procedure_id:
+                continue
+
+            other_entities = {e.lower().strip() for e in (other.get("entity_names") or []) if e}
+            if not other_entities:
+                continue
+
+            # Jaccard overlap
+            overlap = len(evolved_entities & other_entities) / len(evolved_entities | other_entities)
+            if overlap < 0.2:
+                continue
+
+            # Create suggestion trigger
+            shared = ", ".join(evolved_entities & other_entities)
+            self.store.create_procedure_suggestion_trigger(
+                user_id=user_id,
+                suggestion_name=other["name"],
+                suggestion_steps=other.get("steps") or [],
+                episode_count=0,
+                confidence=round(overlap, 2),
+            )
+            logger.info(
+                f"🔗 Cross-procedure suggestion: '{other['name']}' may need update "
+                f"(shares entities: {shared}) after '{proc['name']}' evolved"
+            )
+            suggestions += 1
+
+        return suggestions
 
     @staticmethod
     def _parse_json(text: str) -> dict | None:

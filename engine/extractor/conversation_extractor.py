@@ -78,6 +78,11 @@ PROCEDURAL MEMORY — extract learned workflows/processes:
 - Include: name (what the procedure does), trigger (when to use it), steps (ordered actions)
 - Link to entities involved
 - Do NOT create procedures from hypothetical/planned workflows — only from confirmed actions
+- IMPORTANT: Extract procedures from IMPLICIT workflows too:
+  - If user describes a sequence of actions: "I deployed, then ran migrations, then restarted" → extract as procedure
+  - If user describes their typical process: "I usually start by checking logs, then..." → extract
+  - If user describes step-by-step debugging/deployment/review/etc → extract
+  - Even casual descriptions like "first I do X, then Y, then Z" contain extractable procedures
 
 Response format (strict JSON, no ```):
 {{
