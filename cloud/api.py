@@ -73,8 +73,8 @@ class SearchRequest(BaseModel):
     graph_depth: int = 2  # 0=no graph, 1=1-hop, 2=2-hop (default)
 
 class FeedbackRequest(BaseModel):
-    context: str = None         # What went wrong (triggers evolution on failure)
-    failed_at_step: int = None  # Which step failed
+    context: str | None = None         # What went wrong (triggers evolution on failure)
+    failed_at_step: int | None = None  # Which step failed
 
 class SignupRequest(BaseModel):
     email: str

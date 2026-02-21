@@ -2938,8 +2938,7 @@ SEMANTIC MEMORY (facts about the user):
         """Get recent episodes not linked to any procedure, excluding failures.
 
         Returns positive, neutral, and mixed episodes for pattern detection.
-        Unlike get_unlinked_positive_episodes(), this includes neutral episodes
-        which represent the majority of user activity.
+        Includes neutral episodes which represent the majority of user activity.
         """
         with self._cursor(dict_cursor=True) as cur:
             cur.execute(
