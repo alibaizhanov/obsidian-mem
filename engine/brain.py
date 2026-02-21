@@ -402,7 +402,7 @@ class MengramBrain:
             try:
                 fm = yaml.safe_load(fm_match.group(1)) or {}
                 data["type"] = fm.get("type", "unknown")
-            except:
+            except Exception:
                 pass
             body = content[fm_match.end():]
 

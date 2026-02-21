@@ -14,7 +14,6 @@ import os
 import sys
 import logging
 import secrets
-from typing import Optional
 from pathlib import Path
 
 # Configure logging
@@ -40,6 +39,7 @@ DATABASE_URL = os.environ.get(
     "postgresql://localhost:5432/mengram"
 )
 REDIS_URL = os.environ.get("REDIS_PUBLIC_URL") or os.environ.get("REDIS_URL")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Mengram <onboarding@resend.dev>")
 
 # ---- Models ----
 
@@ -50,25 +50,25 @@ class Message(BaseModel):
 class AddRequest(BaseModel):
     messages: list[Message]
     user_id: str = "default"
-    agent_id: str = None
-    run_id: str = None
-    app_id: str = None
-    expiration_date: str = None
+    agent_id: str | None = None
+    run_id: str | None = None
+    app_id: str | None = None
+    expiration_date: str | None = None
 
 class AddTextRequest(BaseModel):
     text: str
     user_id: str = "default"
-    agent_id: str = None
-    run_id: str = None
-    app_id: str = None
-    expiration_date: str = None
+    agent_id: str | None = None
+    run_id: str | None = None
+    app_id: str | None = None
+    expiration_date: str | None = None
 
 class SearchRequest(BaseModel):
     query: str
     user_id: str = "default"
-    agent_id: str = None
-    run_id: str = None
-    app_id: str = None
+    agent_id: str | None = None
+    run_id: str | None = None
+    app_id: str | None = None
     limit: int = 5
     graph_depth: int = 2  # 0=no graph, 1=1-hop, 2=2-hop (default)
 
@@ -374,7 +374,7 @@ Be strict — only include entities that directly answer or relate to the query.
             """
 
             resend.Emails.send({
-                "from": "Mengram <onboarding@resend.dev>",
+                "from": EMAIL_FROM,
                 "to": [email],
                 "subject": subject,
                 "html": html,
@@ -500,6 +500,9 @@ Be strict — only include entities that directly answer or relate to the query.
         response_type: str = "code",
     ):
         """OAuth authorize page — shows email login."""
+        from urllib.parse import quote
+        redirect_uri_encoded = quote(redirect_uri, safe="")
+        state_encoded = quote(state, safe="")
         return HTMLResponse(f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -544,8 +547,8 @@ Be strict — only include entities that directly answer or relate to the query.
 </div>
 
 <script>
-const redirectUri = "{redirect_uri}";
-const state = "{state}";
+const redirectUri = decodeURIComponent("{redirect_uri_encoded}");
+const state = decodeURIComponent("{state_encoded}");
 
 async function sendCode() {{
   const email = document.getElementById('email').value.trim();
@@ -612,7 +615,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                 import resend
                 resend.api_key = resend_key
                 resend.Emails.send({
-                    "from": "Mengram <onboarding@resend.dev>",
+                    "from": EMAIL_FROM,
                     "to": [email],
                     "subject": "Mengram verification code",
                     "html": f"<h2>Your code: {code}</h2><p>Expires in 10 minutes.</p>",
@@ -621,7 +624,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
                 logger.error(f"⚠️ Email send failed: {e}")
                 return {"ok": False, "error": "Failed to send email"}
         else:
-            logger.warning(f"⚠️ No RESEND_API_KEY, code for {email}: {code}")
+            logger.warning(f"⚠️ No RESEND_API_KEY configured, cannot send code to {email}")
 
         return {"ok": True}
 
@@ -1208,7 +1211,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         entity_id = store.get_entity_id(user_id, name)
         if not entity_id:
             raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
-        with store.conn.cursor() as cur:
+        with store._cursor() as cur:
             cur.execute("DELETE FROM embeddings WHERE entity_id = %s", (entity_id,))
             cur.execute("DELETE FROM knowledge WHERE entity_id = %s", (entity_id,))
             cur.execute("DELETE FROM facts WHERE entity_id = %s", (entity_id,))
@@ -1258,7 +1261,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         entity_id = store.get_entity_id(user_id, name)
         if not entity_id:
             raise HTTPException(status_code=404, detail=f"Entity '{name}' not found")
-        with store.conn.cursor() as cur:
+        with store._cursor() as cur:
             cur.execute("UPDATE entities SET type = %s WHERE id = %s", (new_type, entity_id))
         return {"entity": name, "new_type": new_type}
 
@@ -1512,7 +1515,7 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
         entity_id = store.get_entity_id(user_id, entity_name)
         if not entity_id:
             raise HTTPException(status_code=404, detail=f"Entity '{entity_name}' not found")
-        with store.conn.cursor() as cur:
+        with store._cursor() as cur:
             cur.execute(
                 """UPDATE facts SET archived = TRUE, superseded_by = 'manually archived'
                    WHERE entity_id = %s AND content = %s AND archived = FALSE""",
@@ -1580,9 +1583,11 @@ document.getElementById('code').addEventListener('keydown', e => {{ if(e.key==='
     @app.get("/v1/profile/{target_user_id}", tags=["Memory"])
     async def get_profile(target_user_id: str, force: bool = False, user_id: str = Depends(auth)):
         """Cognitive Profile — generates a ready-to-use system prompt from user memory.
-        
+
         Returns a personalization prompt that can be inserted into any LLM.
         Cached for 1 hour. Use force=true to regenerate."""
+        if target_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Cannot access another user's profile")
         return store.get_profile(target_user_id, force=force)
 
     @app.get("/v1/profile", tags=["Memory"])

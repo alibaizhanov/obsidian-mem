@@ -175,7 +175,6 @@ class VectorStore:
             return
 
         self._chunk_ids = [r["id"] for r in rows]
-        dim = self.embedder.dimensions
         self._vectors = np.array([
             np.frombuffer(r["embedding"], dtype=np.float32)
             for r in rows

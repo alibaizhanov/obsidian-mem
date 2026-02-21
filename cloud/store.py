@@ -24,12 +24,6 @@ from typing import Optional
 from contextlib import contextmanager
 
 try:
-    import asyncpg
-    ASYNCPG_AVAILABLE = True
-except ImportError:
-    ASYNCPG_AVAILABLE = False
-
-try:
     import psycopg2
     import psycopg2.extras
     import psycopg2.pool
@@ -189,9 +183,7 @@ class CloudStore:
                     self._pool.putconn(conn, close=True)
                 except Exception:
                     pass
-                conn = self._pool.getconn()
-                conn.autocommit = True
-                yield conn
+                conn = None  # Mark as returned so finally doesn't double-return
             else:
                 # Reconnect single connection
                 try:
@@ -200,7 +192,7 @@ class CloudStore:
                     pass
                 self.conn = psycopg2.connect(self.database_url)
                 self.conn.autocommit = True
-                raise
+            raise  # Always re-raise so caller knows the operation failed
         finally:
             if from_pool and self._pool and conn:
                 try:
@@ -795,7 +787,6 @@ class CloudStore:
                 cur.execute("DELETE FROM oauth_codes WHERE code = %s", (code,))
                 return {"user_id": str(row["user_id"]), "redirect_uri": row["redirect_uri"], "state": row["state"]}
             return None
-        return self.create_api_key(user_id, name="reset")
 
     # ---- Entities ----
 
@@ -2943,38 +2934,6 @@ SEMANTIC MEMORY (facts about the user):
                 })
             return results
 
-    def get_unlinked_positive_episodes(self, user_id: str, limit: int = 50) -> list[dict]:
-        """Get recent positive episodes not linked to any procedure.
-
-        Used by the evolution engine to detect patterns for auto-creating procedures.
-        """
-        with self._cursor(dict_cursor=True) as cur:
-            cur.execute(
-                """SELECT id, summary, context, outcome, participants,
-                          emotional_valence, importance, created_at
-                   FROM episodes
-                   WHERE user_id = %s
-                     AND linked_procedure_id IS NULL
-                     AND emotional_valence = 'positive'
-                     AND (expires_at IS NULL OR expires_at > NOW())
-                   ORDER BY created_at DESC
-                   LIMIT %s""",
-                (user_id, limit)
-            )
-            results = []
-            for row in cur.fetchall():
-                results.append({
-                    "id": str(row["id"]),
-                    "summary": row["summary"],
-                    "context": row["context"],
-                    "outcome": row["outcome"],
-                    "participants": row["participants"] or [],
-                    "emotional_valence": row["emotional_valence"],
-                    "importance": round(float(row["importance"] or 0.5), 2),
-                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-                })
-            return results
-
     def get_unlinked_actionable_episodes(self, user_id: str, limit: int = 50) -> list[dict]:
         """Get recent episodes not linked to any procedure, excluding failures.
 
@@ -3157,7 +3116,6 @@ Be specific and personal, not generic. No markdown, just JSON."""
         # Hard cap on text size (~8K chars ≈ 2K tokens)
         if len(facts_text) > 8000:
             facts_text = facts_text[:8000] + "\n... (truncated)"
-        facts_text = "\n".join(facts_lines)
 
         prompt = self.AGENT_CURATOR_PROMPT.format(facts_text=facts_text)
 
@@ -3343,8 +3301,8 @@ Be specific and personal, not generic. No markdown, just JSON."""
 
         prompt = self.AGENT_DIGEST_PROMPT.format(
             recent_facts=recent_facts,
-            total_entities=stats.get("total_entities", 0),
-            total_facts=stats.get("total_facts", 0),
+            total_entities=stats.get("entities", 0),
+            total_facts=stats.get("facts", 0),
             health_score=health_score,
             agent_findings=agent_findings
         )
@@ -3602,7 +3560,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                         cur2.execute("""
                             UPDATE webhooks SET last_error = %s WHERE id = %s
                         """, (str(e)[:500], hook_id))
-                except:
+                except Exception:
                     pass
 
         for hook in hooks:
@@ -3702,8 +3660,7 @@ Be specific and personal, not generic. No markdown, just JSON."""
                     INSERT INTO team_members (team_id, user_id, role)
                     VALUES (%s, %s, 'member')
                 """, (team["id"], user_id))
-            except Exception:
-                pass  # autocommit mode
+            except psycopg2.errors.UniqueViolation:
                 raise ValueError("Already a member of this team")
 
             self.cache.invalidate(f"teams:{user_id}")
